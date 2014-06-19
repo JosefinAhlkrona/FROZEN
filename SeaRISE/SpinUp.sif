@@ -502,12 +502,8 @@ Solver 16 !DONT EXECUTE, just for the purpose of restarting!!
   Error Estimation Method = String SolutionBasedErrorBound !ResidualBasedErrorEstimate
   Couple Approximations = Logical True
   Error Estimation Intervals = Integer 1
-  Maximum Allowed Residual = Real 20.0
-  Only Compute Horizontal Error = Logical False
   Relative Error Allowed In Percent = Real 5.0
   Absolute Error Allowed = Real 10.0 !m/a
-  Horizontal Velocity Regarded as Zero = Real 0.1 !m/a
-  Relative Residual instead of Absolute = Logical True
 End
 
 Solver 17  
