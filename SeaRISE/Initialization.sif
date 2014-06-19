@@ -1,0 +1,102 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! HEADER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SIMULATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = "Cartesian 3D"
+  Simulation Type = Transient
+  TimeStep intervals = 1
+  Timestep Sizes = 1.0
+  Output Intervals = 1
+  Extruded Mesh Levels=4
+  Initialize Dirichlet Conditions = Logical False
+  Restart Before Initial Conditions = Logical True
+  Output File = initialization.result
+  max output level = 9
+  Output Intervals = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SOLVER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 1
+  !Exec Solver = Before simulation
+  Equation = Reader
+  Procedure = "./GridDataReader1" "GridDataReader"
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "./Greenland_bedrock_topography_V3.nc"
+
+  X Dim Name = String "X"
+  Y Dim Name = String "Y"
+
+  X Var Name = String "projection_x_coordinate"
+  Y Var Name = String "projection_y_coordinate"
+
+  !--- Interpolation variables
+  X Epsilon  = Real 1.0e-2
+  Y Epsilon  = Real 1.0e-2
+  Epsilon Time = Real 0.01
+
+  Interpolation Bias = Real 0.0
+  Interpolation Multiplier = Real 1.0
+
+  Is Time Counter = Logical True
+
+  Variable 1 = File "SurfaceElevation"
+  Variable 2 = File "BedrockElevation"
+
+  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid 
+End
+
+
+Solver 2
+  !Exec Solver = never!Before simulation 
+  Equation = Reader2
+  Procedure = "./GridDataReader2" "GridDataReader"
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "./GreenlandBeta.nc" 
+
+  Time Dim Name = String "time"
+  X Dim Name = String "X" 
+  Y Dim Name = String "Y"
+
+  Time Var Name = String "time"
+  X Var Name = String "x" 
+  Y Var Name = String "y"
+
+  !--- Interpolation variables
+  X Epsilon  = Real 1.0e-2 
+  Y Epsilon  = Real 1.0e-2 
+  Epsilon Time = Real 0.01
+
+  Interpolation Bias = Real 0.0 
+  Interpolation Multiplier = Real 1.0 
+
+  Is Time Counter = Logical True
+
+  Variable 1 = Beta
+
+  Valid Min Value 1 = Real 1.0e-05 !TO DO in GriddataReader read attribute _fillVal and allow to change it
+
+  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid 
+End
+
+
+Body 1
+  Equation = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+
