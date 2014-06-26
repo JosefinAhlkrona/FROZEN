@@ -3,7 +3,7 @@
 #take so that simulation time, time step size, output interval, restart position and extruded mesh levels matches between Spinup.sif and Future.sif
 
 #number of cores
-antal=1
+antal=4
 
 #partition the mesh - one piece for each core
 echo ---------------------------------------------------------------------
@@ -11,7 +11,7 @@ echo ---------------------------------------------------------------------
 echo Constructing mesh
 echo ---------------------------------------------------------------------
 echo ---------------------------------------------------------------------
-ElmerGrid 2 2 mesh2D_smooth10 -partition $antal 1 1 1
+ElmerGrid 2 2 mesh -partition $antal 1 1 1
 
 # Read in geometry data for netcdf-files
 echo ---------------------------------------------------------------------
