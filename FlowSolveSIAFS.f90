@@ -1,4 +1,4 @@
-
+!
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -218,7 +218,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   END INTERFACE
   !------------------------------------------------------------------------------
 
-  WRITE(*,*) '------------------------ IN FLOWSOLVE-----------------------'
   at=0
   st=0
   stmean=0
@@ -291,19 +290,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
   DIM = CoordinateSystemDimension()
 
-WRITE(*,*) 'common'
   FlowSol => Solver % Variable
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
   NSDOFs         =  FlowSol % DOFs
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
-WRITE(*,*) 'common'
   FlowPerm       => FlowSol % Perm
   FlowSolution   => FlowSol % Values
 
@@ -377,6 +365,7 @@ WRITE(*,*) 'common'
      CALL Fatal( 'FlowSolveSIAFS','Did not think about what happens if mesh changes' )
   END IF
 
+
   IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
 
      N = Solver % Mesh % MaxElementDOFs
@@ -412,12 +401,10 @@ WRITE(*,*) 'common'
              ElementApproximation, RelativeErrorX, &
              HastighetsError, &
              RelativeErrorY, RelativeErrorZ, &
-             ExtPressure, STAT=istat )
-
-        DEALLOCATE( &
+             ExtPressure, &
              CoupledSolution, &
              ErrorInSIA, &
-             NodeWiseError, &
+             NodeWiseError, FSPerm, &
              STAT=istat )
      END IF
 
@@ -460,12 +447,12 @@ WRITE(*,*) 'common'
           ElementApproximation(GetNOFActive(Solver)), &
           AssembleElements(GetNOFActive(Solver)), &
           OldActiveElements(GetNOFActive(Solver)), &
-          ExtPressure( N ), SiaNodes(N),STAT=istat )
-     ALLOCATE(&
+          ExtPressure( N ), SiaNodes(N), &
           CoupledSolution(  SIZE( FlowSolution )), &
           ErrorInSIA(  SIZE( FlowSolution )), &            
           NodeWiseError(  Model % Mesh % NumberOfNodes ), &
-          STAT=istat )  
+          FSPerm(SIZE(FlowPerm)),STAT=istat)
+
 
      Drag = 0.0d0
      NULLIFY(Pwrk) 
@@ -681,10 +668,7 @@ WRITE(*,*) 'common'
      OldApproximation  = ListGetLogical(GetMaterial(), 'Previous ApproximationLevel',GotIt)
      IF (.NOT. OldApproximation) THEN
 
-     WRITE(*,*) 'No previous aproximation level available'     
-
      NodeType2=0
-     WRITE(*,*) 'Number of active elements', GetNOFActive()
      DO i = 1, GetNOFActive()
         Element => GetActiveElement(i)
         n = GetElementNOFNodes()
@@ -721,10 +705,6 @@ WRITE(*,*) 'common'
         NumberOfSIANodes=SIZE(NodeType2)-NumberOfFSNodes
      END IF
 
-     WRITE(*,*) 'Number of SIANodes=', NumberOfSIANodes
-     WRITE(*,*) 'Number of FSNodes=', NumberOfFSNodes
-
-
   END IF !timestep =1  and couplapprox
 
   IF (TimeStuff) THEN
@@ -739,8 +719,6 @@ WRITE(*,*) 'common'
 
      close(134)
   END IF
-
-  WRITE(*,*) '-----CouplApprox=', CouplApprox
 
   IF (CouplApprox) THEN
      IF ((MOD((Timestep-FirstReorder)-1,ReorderTimeInterval)==0 &
@@ -790,7 +768,7 @@ WRITE(*,*) 'common'
 
         ! ALLOCATIONS (Now when I know how many FS-Nodes there is)  ---------------
 
-        WRITE( Message, * ) 'Allocating x_FS to size ', NSDOFs*NumberOfFSNodes  
+        WRITE( Message, * ) 'Processor no ', ParEnv % MyPE, ' says: Allocating x_FS to size ', NSDOFs*NumberOfFSNodes  
         CALL Info( 'FlowSolveSIAFS',Message, Level=4 )
         ALLOCATE( x_FS(NSDOFs*NumberOfFSNodes), STAT=istat )
 
@@ -834,7 +812,6 @@ WRITE(*,*) 'common'
 
   IF (SIAasInitial .AND. Timestep ==1) THEN
 
-     WRITE(*,*) 'setting sia velocity as initial condition'
      DO i = 1, SIZE(FlowSolution)/NSDOFs
         DO k_i=1,NSDOFs
            FlowSolution(NSDOFs*(i-1)+k_i)=SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i);
@@ -869,8 +846,6 @@ WRITE(*,*) 'common'
      CALL Info( 'FlowSolve', ' ', Level=4 )
      CALL Info( 'FlowSolve','Starting Assembly...', Level=4 )
 
-     WRITE(*,*) 'NOF active elements:', GetNOFActive()
-
      !------------------------------------------------------------------------------
      CALL InitializeToZero( A, ForceVector )
      !------------------------------------------------------------------------------
@@ -881,7 +856,7 @@ WRITE(*,*) 'common'
 
      CALL StartAdvanceOutput( 'FlowSolve', 'Assembly: ' )
 
-      WRITE(*,*) 'meep'
+      WRITE(*,*) ' '
 
      DO t = 1,GetNOFActive()
         CALL AdvanceOutput( t,GetNOFActive() )
@@ -1563,13 +1538,8 @@ WRITE(*,*) 'common'
      CALL DefaultDirichletBCs()
      CALL Info( 'FlowSolve', 'Dirichlet conditions done', Level=4 )
 
-     WRITE(*,*) ''
-     WRITE(*,*) 'CouplApprox=', CouplApprox
-     WRITE(*,*) 'DoingErrorEstimation', DoingErrorEstimation
      !------------------------------------------------------------------------
      IF (CouplApprox .AND. .NOT. DoingErrorEstimation ) THEN 
-
-        WRITE(*,*) 'iter=', iter
 
         setupsys=CPUTime()
 
@@ -1595,7 +1565,6 @@ WRITE(*,*) 'common'
            WRITE( Message, * ) 'Allocating A_FS and A_Coupling' 
            CALL Info( 'FlowSolve',Message, Level=4 )
            !---------Allocate A_FS--------------------------------------------------------------------
-           WRITE(*,*) 'AFSrow =', AFSrow, ' and ASIArow=', ASIArow
            ! Allocate, splitted matrices. Some copy paste from CRScreateMatrix. 
            A_FS => AllocateMatrix()
            A_FS % Format = MATRIX_LIST
@@ -1615,20 +1584,9 @@ WRITE(*,*) 'common'
 
         !----------Fill in matrix A_FS and A_Coupling
         WRITE( Message, * ) 'Filling in A_FS and A_Coupling' 
-        WRITE(*,*) 'SIZE(A_FS % RHS)=', SIZE(A_FS % RHS)
-        WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
-        WRITE(*,*) 'SIZE(A_FS % Values)=', SIZE(A_FS % Values)
-        WRITE(*,*) 'SIZE(A_Coupling % Values)=', SIZE(A_Coupling % Values)
-        WRITE(*,*) 'SIZE(A_Coupling % Rows)=', SIZE(A_Coupling % Rows)
-        WRITE(*,*) 'SIZE(A_FS % Rows)=', SIZE(A_FS % Rows)
-        WRITE(*,*) 'SIZE(A_Coupling % Cols)=', SIZE(A_Coupling % Cols)
-        WRITE(*,*) 'SIZE(A_FS % Cols)=', SIZE(A_FS % Cols)
-
-
         CALL Info( 'FlowSolve',Message, Level=4 )
 
         SIAVelPermuted=0
-
 
         k_i=0
         k_j=0
@@ -1637,6 +1595,7 @@ WRITE(*,*) 'common'
         AFSrow=0
         ASIArow=0
         AFScol=0
+        FSPerm=0.0
         DO i=1,A % NumberOfRows/NSDOFs !Loop over u,v,p blocks in matrix
 
            !While i'm at it, I'll reorder SIAVel so it has the same permuation as Flowsolution
@@ -1648,7 +1607,7 @@ WRITE(*,*) 'common'
            IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 2) THEN !Full Stokes row
               !Counter for FS blocks
               AFSrow = AFSrow + 1
-              !FSPerm(InvPerm(i))=AFSrow
+              FSPerm(ProperNodes(InvPerm(i)))=AFSrow
               DO k_i=1,NSDOFs
                  i_jos=NSDOFs*(i-1)+k_i  !Row in big matrix
                  A_FS % RHS(NSDOFs*(AFSrow-1)+k_i) = A % RHS(i_jos)
@@ -1703,7 +1662,7 @@ WRITE(*,*) 'common'
            Solver % Matrix => A_Coupling
            A => Solver % Matrix
            Solver % Matrix % Comm = MPI_COMM_WORLD
-           IF(.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A)
+           IF(.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A,FlowPerm)
 
 
            CALL ParallelInitSolve(A_Coupling,SIAVelPermuted,yy,yy)
@@ -1731,9 +1690,6 @@ WRITE(*,*) 'common'
            END IF
         END DO
 
-        WRITE(*,*) 'NumberOfFSNodes', NumberOfFSNodes
-        WRITE(*,*) 'NumberOfSIANodes', NumberOfSIANodes
-
         setupsys=CPUTime()-setupsys
 
      END IF !Coupling approx .AND. .NOT. DoingErrorEstimation
@@ -1750,93 +1706,59 @@ WRITE(*,*) 'common'
      IF ( NonlinearRelax /= 1.0d0 ) PSolution = FlowSolution
 
      IF (CouplApprox .AND. .NOT. DoingErrorEstimation) THEN 
-        WRITE( Message, * ) 'Solving small FS-system' 
+        WRITE( Message, * ) 'Processor no ', ParEnv % MyPE, ' says: Solving small FS-system' 
         CALL Info( 'FlowSolve',Message, Level=4 )
 
         pp => Solver % Variable % Perm
-
         ss => Solver % Matrix
-
         Solver % Matrix => A_FS 
         A => Solver % Matrix
-
         xx => Solver % Variable % Values
-        WRITE(*,*) 'size flowsolution before before= ',SIZE(FlowSolution)
-        WRITE(*,*) 'size solver %variable % values =', SIZE(Solver % Variable % Values)
-        WRITE(*,*) 'size x_fs  before before= ',SIZE(x_FS)
-
         Solver % Variable % Values => x_FS
-        WRITE(*,*) 'size flowsolution before= ',SIZE(FlowSolution)
-        WRITE(*,*) 'size solver %variable % values =', SIZE(Solver % Variable % Values)
-        WRITE(*,*) 'size x_fs  before= ',SIZE(x_FS)
-
+     
         IF (ParEnv % PEs>1) THEN
-                                    WRITE(*,*) 'Doing some parallell stuff'
            A % Comm = MPI_COMM_WORLD
-           IF(.NOT.ASSOCIATED(A % ParMatrix)) THEN
-                                        WRITE(*,*) 'A % ParMatrix not associated'
-                                        WRITE(*,*) 'Allocate FSPerm'
-
-              ALLOCATE(FSPerm(SIZE(x_FS)/NSDOFs))
-              WRITE(*,*) 'Setting FSPerm to 0'
-
-              FSPerm=0  
-              !ALLOCATE(Solver % Variable % Perm(SIZE(pp)))
-              !Solver % Variable % Perm=0
+           IF(.NOT.ASSOCIATED(A % ParMatrix)) THEN              
               j=0
-              WRITE(*,*) 'Startig loop with size(FlowSolution)/NSDOFs=', SIZE(FlowSolution)/NSDOFs
-              WRITE(*,*) 'SIZE(NodeType2)=', SIZE(NodeType2)
-              WRITE(*,*) 'SIZE(ProperNodes)=', SIZE(ProperNodes)
-              WRITE(*,*) 'SIZE(InvPerm)=', SIZE(InvPerm)
-              WRITE(*,*) 'SIZE(FSPerm)=', SIZE(FSPerm)
+              !DO i = 1, SIZE(FlowSolution)/NSDOFs
+              !   IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 2) THEN !1 SIA 2 FS
+              !      j=j+1
+              !      !Solver % Variable % Perm(i)=j
+              !      WRITE(*,*) 'j=',j, ' and i=', i
+              !      FSPerm(j)=i
+              !   END IF
+              !END DO
 
-
-              DO i = 1, SIZE(FlowSolution)/NSDOFs
-                 IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 2) THEN !1 SIA 2 FS
+              j=0
+              FSPerm=0
+              DO i = 1, SIZE(FlowPerm) !SIZE(FlowSolution)/NSDOFs
+                 IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 1) THEN
+                 ELSE
                     j=j+1
-                    !Solver % Variable % Perm(i)=j
                     FSPerm(i)=j
-
                  END IF
-              END DO
+               END DO
+
+              !FSPerm=FlowPerm
               FSPermPointer => FSPerm
+
               CALL ParallelInitMatrix(Solver,A,FSPermPointer)
              ! CALL ParallelInitMatrix(Solver,A)
 
-              DEALLOCATE(FSPerm)              
+              !DEALLOCATE(FSPerm)              
               !DEALLOCATE(Solver % Variable % Perm)
 
            END IF
         END IF
 
-
-
-        WRITE(*,*) 'solvin'
         Solver % Variable  % Values=0._dp
-        WRITE(*,*) 'callin default solve'
 
-
-WRITE(*,*) 'SIZE(A_FS % RHS)=', SIZE(A_FS % RHS)
-WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
         nrm = DefaultSolve() 
 
-WRITE(*,*) 'SIZE(A_FS % RHS)=', SIZE(A_FS % RHS)
-WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
-
-        WRITE(*,*) 'associating solver matrix to ss'
-
-
         Solver % Matrix => ss
-        WRITE(*,*) 'associating A to solver matrix'
-
         A => Solver % Matrix
-        WRITE(*,*) 'associating perm to pp'
-
         Solver % Variable % Perm => pp
-        WRITE(*,*) 'associating variable to xx'
-
         Solver % Variable % Values => xx 
-
 
         !Glue solution together with SIA-solution
         WRITE( Message, * ) 'Glue FS-solution and SIA-solution together' 
@@ -1850,11 +1772,9 @@ WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
               DO j=1,NSDOFs
                  FlowSolution(NSDOFs*(i-1)+j)= SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+j)
               END DO
-              !WRITE(*,*) 'SIANODE'
            ELSE ! Full Stokes   
               AFSrow=AFSrow+1
               DO j=1,NSDOFs
-                 !WRITE(*,*) 'index1: ', NSDOFs*(i-1)+j, 'index2: ',NSDOFs*(AFSrow-1)+j
                  FlowSolution(NSDOFs*(i-1)+j) = x_FS(NSDOFs*(AFSrow-1)+j)
               END DO
            END IF
@@ -1913,16 +1833,11 @@ WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
         !IF (CouplApprox) THEN 
            !Compute norm of solution
            PrevNorm = Norm
-           WRITE(*,*) 'PrevNorm=', Norm
-
            Norm = Solver % Variable % Norm! ParallelReduction(SQRT(SUM(FlowSolution**2)))
-           WRITE(*,*) 'Norm=', Norm
-
            WRITE( Message, * ) 'Norm is',Norm 
            CALL Info( 'FlowSolve',Message, Level=4 )
            WRITE( Message, * ) 'Norm previous iteration is',PrevNorm 
            CALL Info( 'FlowSolve',Message, Level=4 )
-
 
            IF (PrevNorm+Norm /= 0.0d0) THEN
               RelativeChange= 2.0d0 * ABS(PrevNorm-Norm) / (PrevNorm + Norm)
@@ -1932,7 +1847,6 @@ WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
         !ELSE
          !  RelativeChange = Solver % Variable % NonlinChange
         !END IF
-        WRITE(*,*) '------ Solver % Variable % Norm = ---', Solver % Variable % Norm
 
      END IF
 
@@ -1950,15 +1864,10 @@ WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
           iter > NewtonIter ) NewtonLinearization = .TRUE.
 
      !Breaking free
-     WRITE(*,*) 'RelativeChange', RelativeChange
-     WRITE(*,*) 'DoingErrorEstimation', DoingErrorEstimation
      !IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter .OR. DoingErrorEstimation) THEN
-     WRITE(*,*) '*** Iter==NonlinearIter=', iter==NonlinearIter
      IF ( RelativeChange < NonLinearTol .OR. iter==NonlinearIter .OR. DoingErrorEstimation) THEN
 
         IF (.NOT. DoErrorEstimation) THEN !will happen if DoingErrorEstimation 
-           WRITE(*,*)  'ich bin dying!!' 
-
            EXIT
         ELSE IF (DoErrorEstimation) THEN
            ! IF (Iter==NonlinearIter) THEN
@@ -2007,7 +1916,6 @@ WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
 
 
      atmean=atmean+at
-     WRITE(*,*) 'iter = ', iter, ' and atmean = ', atmean
      stmean=stmean+st
      gluetimemean=gluetimemean+gluetime          
 
@@ -2070,15 +1978,6 @@ WRITE(*,*) 'SIZE(A_Coupling % RHS)=', SIZE(A_Coupling % RHS)
               ErrorBoundAbs = 1.0
            END IF
 
-WRITE(*,*) '**********************************************************************************'
-WRITE(*,*) '**********************************************************************************'
-WRITE(*,*) 'ErrorBoundRel =',  ErrorBoundRel
-WRITE(*,*) 'ErrorBoundAbs =',  ErrorBoundAbs
-WRITE(*,*) '**********************************************************************************'
-WRITE(*,*) '**********************************************************************************'
-WRITE(*,*) '**********************************************************************************'
-
-
            LowerHorVelLimit  = GetConstReal(  Solver % Values,  &
                 'Horizontal Velocity Regarded as Zero', gotIt )
            IF (.NOT. gotIt) THEN
@@ -2099,11 +1998,7 @@ WRITE(*,*) '********************************************************************
            Timestep = NINT(Timevar % Values(1))
 
            ErrorInSIA=FlowSolution-SIAVelPermuted
-
-           !WRITE(*,*) 'NodeWiseError', NodeWiseError
            NodeWiseError=0.0_dp
-
-           !WRITE(*,*) '************IN ERRORSUBS*********'
 
            !if error is to big then do FS
            NodeType2=0
@@ -2132,7 +2027,6 @@ WRITE(*,*) '********************************************************************
 
 
                     ELSE
-                       ! WRITE(*,*) 'Error would be NaN or unreasonable'
                        NodeWiseError(k)=0.0_dp
                     END IF
                  CASE(4) !3D simulation
@@ -2184,8 +2078,6 @@ WRITE(*,*) '********************************************************************
            ! CALL  SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, NodeType2, &
            !   SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes,ReorderTimeInterval)
         END SELECT
-
-        WRITE(*,*) 'Error estimation, number of FS nodes: ', NumberOfFSNodes, ' and number of SIA nodes: ', NumberOfSIANodes 
 
         !deallocate stuff you used
         DEALLOCATE(x_FS,STAT=istat)

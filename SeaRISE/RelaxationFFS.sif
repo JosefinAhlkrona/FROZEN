@@ -105,8 +105,8 @@ Simulation
   Simulation Type = Transient !simulation starts 125 000 ybp
   Timestepping Method = "BDF"
   BDF Order = 1
-  Timestep Intervals = 1!$1*12  
-  Timestep Sizes = 1!0.0833333333         !1 month = 0.0833333333 year
+  Timestep Intervals = 2       !$1*12  
+  Timestep Sizes = 0.0833333333         !1 month = 0.0833333333 year
 
   Extruded Mesh Levels=4		!has to be in init and spinup file too
   
@@ -481,7 +481,7 @@ Solver 16
   Linear System Max Iterations=1000
   Linear System Preconditioning=ilu
   Linear System Convergence Tolerance=1e-9
-  Linear System Direct Method = umfpack
+  Linear System Direct Method = mumps
 
   Solver Timing = Logical True
   Linear System Timing = Logical True
@@ -493,8 +493,8 @@ Solver 16
   SIA as initial condition = Logical True 
   Error Estimation Method = String SolutionBasedErrorBound !ResidualBasedErrorEstimate
   Error Estimation Intervals = Integer 1
-  Relative Error Allowed In Percent = Real 1.0
-  Absolute Error Allowed = Real 0.1 !m/a
+  Relative Error Allowed In Percent = Real 20.0
+  Absolute Error Allowed = Real 10 !m/a
 End
 
 Solver 17
@@ -547,7 +547,7 @@ Solver 18
 
   Apply Dirichlet = Logical True
 
-  Linear System Solver = Iterative
+  Linear System Solver = Direct!Iterative
   Linear System Iterative Method = BiCGStab
   Linear System Direct Method = "mumps"
   Linear System Max Iterations  = 1000

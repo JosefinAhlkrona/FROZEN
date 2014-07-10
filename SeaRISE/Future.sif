@@ -105,8 +105,8 @@ Simulation
   Simulation Type = Transient !simulation starts 125 000 ybp
   Timestepping Method = "BDF"
   BDF Order = 1
-  Timestep Intervals = 4 
-  Timestep Sizes = 1! 0.0833333333         !1 month = 0.0833333333 year
+  Timestep Intervals = 2
+  Timestep Sizes =  0.0833333333         !1 month = 0.0833333333 year
 
   Extruded Mesh Levels=4		!has to be in init and spinup file too
   
@@ -472,7 +472,7 @@ Solver 16
   Linear System Scaling=False
   Optimize Bandwidth = False
 
-  Nonlinear System Convergence Tolerance = 1.0E-01
+  Nonlinear System Convergence Tolerance = 1.0E-02
   Nonlinear System Max Iterations = 100
   Nonlinear System Newton After Iterations = 500
   Nonlinear System Newton After Tolerance = 1.0e-16
@@ -546,9 +546,10 @@ Solver 18
   Nonlinear System Min Iterations = 2
   Nonlinear System Convergence Tolerance = 1.0e-06
 
+
   Apply Dirichlet = Logical True
 
-  Linear System Solver = Iterative
+  Linear System Solver = Direct!Iterative
   Linear System Iterative Method = BiCGStab
   Linear System Direct Method = "mumps"
   Linear System Max Iterations  = 1000
@@ -748,7 +749,7 @@ Material 1
   Bottom Surface Elevation = Equals BedrockElevation
 
 ! non-linear, thermo-mechanical
-  Isothermal = Logical True
+  Isothermal = Logical False
  
  !Viscosity = Real MATC "(2.0*100.0)^(-1.0/3.0)"
   Viscosity = Variable "Temp Homologous"
@@ -781,7 +782,7 @@ Material 1
 
  Cauchy = Logical True
 
- Previous ApproximationLevel = Logical True
+ Previous ApproximationLevel = Logical False
  SIA node = Real -1.0 !FS
 
 End
