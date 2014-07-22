@@ -138,7 +138,8 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   LOGICAL :: FOUND_VELO_LIMIT
 
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, TemperatureName, ViscosityFlag, BedrockName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, TemperatureName, ViscosityFlag, &
+       BedrockName, SurfaceName
 
   SAVE  AllocationsDone, DIM, SolverName
 
@@ -237,12 +238,10 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   !Geometry stuff.......
   Grad1Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad1')  
   IF (.NOT. ASSOCIATED(Grad1Sol)) THEN
-     Grad1Sol => VariableGet( Solver % Mesh % Variables, 'Zs grad 1')
+     SurfaceName=GetString( Solver % Values, 'Surface Name', gotIt )
+     Grad1Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 1')
   END IF
-  IF (.NOT. ASSOCIATED(Grad1Sol)) THEN
-     Grad1Sol => VariableGet( Solver % Mesh % Variables, 'FS grad 1')
-  END IF
-  IF (ASSOCIATED(Grad1Sol)) THEN
+  IF  (ASSOCIATED(Grad1Sol)) THEN
      GradSurface1 => Grad1Sol % Values
      GradSurface1Perm => Grad1Sol % Perm
   ELSE
@@ -252,19 +251,19 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
 
   IF (dim > 2) THEN
-     Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad2')
+
+     Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad2')  
      IF (.NOT. ASSOCIATED(Grad2Sol)) THEN
-        Grad2Sol => VariableGet( Solver % Mesh % Variables, 'Zs grad 2')
+        SurfaceName=GetString( Solver % Values, 'Surface Name', gotIt )
+        Grad2Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 2')
      END IF
-     IF (.NOT. ASSOCIATED(Grad2Sol)) THEN
-      Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FS grad 2')
-     END IF
-     IF (ASSOCIATED(Grad2Sol)) THEN
+     IF  (ASSOCIATED(Grad2Sol)) THEN
         GradSurface2 => Grad2Sol % Values
         GradSurface2Perm => Grad2Sol % Perm
      ELSE
-        CALL FATAL(SolverName,'Could not find variable >FreeSurfGrad2<')
+        CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad2<')
      END IF
+
   END IF
 
 
@@ -301,30 +300,26 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
   GradGrad1Sol => VariableGet( Solver % Mesh % Variables, 'Freesurfgrad1 grad')
   IF (.NOT. ASSOCIATED(GradGrad1Sol)) THEN
-     GradGrad1Sol => VariableGet( Solver % Mesh % Variables, 'Zs grad 1 grad')
+     GradGrad1Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 1 grad')
   END IF
- IF (.NOT. ASSOCIATED(GradGrad1Sol)) THEN
-     GradGrad1Sol => VariableGet( Solver % Mesh % Variables, 'FS grad 1 grad')
-  END IF
-  IF (ASSOCIATED(GradGrad1Sol)) THEN
+  IF  (ASSOCIATED(GradGrad1Sol)) THEN
      GradGradSurface1 => GradGrad1Sol % Values
-     GradGradSurface1Perm => GradGrad1Sol % Perm
+     GradGradSurface1Perm => Grad1Sol % Perm
+     WRITE(*,*) 'fadsassssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss'
   ELSE
-     CALL FATAL(SolverName,'Could not find variable >Freesurfgrad1 grad<')
+     CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad1 grad<')
   END IF
+
   IF (dim > 2) THEN
-     GradGrad2Sol => VariableGet( Solver % Mesh % Variables, 'Freesurfgrad2 grad') 
+     GradGrad2Sol => VariableGet( Solver % Mesh % Variables, 'Freesurfgrad2 grad')
      IF (.NOT. ASSOCIATED(GradGrad2Sol)) THEN
-        GradGrad2Sol => VariableGet( Solver % Mesh % Variables, 'Zs grad 2 grad')
+        GradGrad2Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 2 grad')
      END IF
-  IF (.NOT. ASSOCIATED(GradGrad2Sol)) THEN
-        GradGrad2Sol => VariableGet( Solver % Mesh % Variables, 'FS grad 2 grad')
-     END IF
-     IF (ASSOCIATED(GradGrad2Sol)) THEN
+     IF  (ASSOCIATED(GradGrad2Sol)) THEN
         GradGradSurface2 => GradGrad2Sol % Values
-        GradGradSurface2Perm => GradGrad2Sol % Perm
+        GradGradSurface2Perm => Grad2Sol % Perm
      ELSE
-        CALL FATAL(SolverName,'Could not find variable >Freesurfgrad2 grad<')
+        CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad2 grad<')
      END IF
   END IF
 
@@ -332,10 +327,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
   FreeSurfSol => VariableGet( Solver % Mesh % Variables, 'FreeSurf' )
   IF (.NOT. ASSOCIATED(FreeSurfSol)) THEN
-     FreeSurfSol => VariableGet( Solver % Mesh % Variables, 'Zs' )
-  END IF
-  IF (.NOT. ASSOCIATED(FreeSurfSol)) THEN
-     FreeSurfSol => VariableGet( Solver % Mesh % Variables, 'FS' )
+     FreeSurfSol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName))
   END IF
   IF (ASSOCIATED(FreeSurfSol)) THEN
      FreeSurf => FreeSurfSol % Values
@@ -359,9 +351,14 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   !   Viscosity reading
   !------------------------------------------------------------------------------
 
-  Material => GetMaterial() ! Model % Materials(1) % Values 
+  !Material => GetMaterial() 
+  Material =>  Model % Materials(1) % Values
 
-  ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt) 
+  ViscosityFlag = ListGetString( Model % Materials(1) % Values ,'Viscosity Model', GotIt) 
+
+  WRITE(*,*) 'ViscosityFlag=',ViscosityFlag
+  WRITE(*,*) 'GotIt=',GotIt
+
 
   SELECT CASE( ViscosityFlag )
 
@@ -376,7 +373,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
      nGlen = GetConstReal(Model % Materials(1) % Values, "Glen Exponent", Found)
 
   CASE('power law')
-     CALL INFO('SIASolver','viscosity model: power law', Level=3)
+     CALL INFO('SIASolver','viscosity model: power law', Level=5)
      ConstTemp = GetLogical(Material, 'Isothermal', GotIt)
 
      n_powerlaw = GetConstReal(Material, 'Viscosity Exponent', Found)
@@ -391,8 +388,8 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
         DO i = 1, Model % Mesh % NumberOfNodes
            Viscosity = ListGetRealAtNode(Material,'Viscosity', i, GotIt)
            ArrheniusFactor(i) = 1.0/(2.0*Viscosity**nGlen)
-           dArrheniusFactordT(i) =  ListGetRealAtNode(Material,'dArrheniusFactordT', i, GotIt)   
-           !WRITE(*,*) 'A(T)=',ArrheniusFactor(i)
+           dArrheniusFactordT(i) =  ListGetRealAtNode(Material, &
+                'dArrheniusFactordT', i, GotIt)           
         END DO
 
  	TempGrad1Sol => VariableGet(  Solver % Mesh % Variables, 'Temp grad 1')
@@ -427,7 +424,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !   Initialize the pointers to top and bottom nodes, needed for the integration 
   !------------------------------------------------------------------------------
-  WRITE(*,*) '-----------------------------------'
   IF( .NOT. Initialized ) THEN
 
      ! Choose active direction coordinate and set corresponding unit vector
@@ -768,9 +764,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
      END DO
 
-
-     !WRITE(*,*) 'MAXVAL(dAdxhminusz3)=',MAXVAL(dAdxhminusz3)
-
      !------------------------------------------------------------------------------
      !   dvxdx, dvydy
      !------------------------------------------------------------------------------
@@ -790,8 +783,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
         ! Surf = FreeSurf(FreeSurfPerm(TopPointer(i)))
         Surf =  Model % Nodes % z(TopPointer(l))
-
-        !WRITE(*,*) ' SurfGrad1Grad1',  SurfGrad1Grad1
 
         dvxdx(i)=  -SurfGrad1*(2.0_dp*SurfGrad1*SurfGrad1Grad1 + 2.0_dp*SurfGrad2*SurfGrad2Grad1)**((nGlen-1.0)/2.0)*A3hminusz3(i) & 
              -SurfGrad1Grad1*SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)  &
@@ -913,8 +904,15 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            vx= -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)
            vy= -intdvxdx(i)
 
+
+!  SurfGrad1 SurfGrad1Grad1 SurfGrad2 SurfGrad2Grad1 A3hminusz3(i) threeA3hminusz2(i) BedGrad1 ArrheniusFactor(i) Surf  dAdxhminusz3(i)
+
+       !    WRITE(*,*) 'vx=', vx
+ !WRITE(*,*) 'uB1=',uB1,' SurfGrad1=', SurfGrad1, ' nGlen=',nGlen, ' A3hminusz3(i)=', A3hminusz3(i) 
+
+
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 1) = vx
-           Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = vy
+           Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = dvxdx(i)!vy
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = SIApressure(i)
         END IF
      END DO
