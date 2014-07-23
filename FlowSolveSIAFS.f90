@@ -89,7 +89,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
   TYPE(Variable_t), POINTER :: DensitySol, TimeVar
   TYPE(Variable_t), POINTER :: FlowSol, TempSol, MeshSol, SIASol, &
-       NodeType2Variable, NodeWiseErrorVariable
+        NodeType2Variable
 
   INTEGER, POINTER :: FlowPerm(:),TempPerm(:), MeshPerm(:), SIAPerm(:)
   REAL(KIND=dp), POINTER :: FlowSolution(:), Temperature(:), &
@@ -109,9 +109,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel, ErrorEstimationMethod
   INTEGER :: CompressibilityModel, ModelCoords, ModelDim
   INTEGER :: body_id,bf_id,eq_id,DIM
-  INTEGER, POINTER :: NodeIndexes(:), Indexes(:), NodeType2Perm(:), &
-       NodeWiseErrorPerm(:)
-  REAL(KIND=dp), POINTER :: NodeType2Values(:), NodeWiseErrorValues(:)
+  INTEGER, POINTER :: NodeIndexes(:), Indexes(:), NodeType2Perm(:)
+  REAL(KIND=dp), POINTER :: NodeType2Values(:)
 
 
   INTEGER, SAVE :: Timestep, SaveTimestep=-1, ReorderTimeInterval
@@ -175,17 +174,12 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
        RelativeErrorZ, HastighetsError, CouplApprox, SIAasInitial, AFSrow, ASIArow, &
        DEALLOCATE_Josefin, REALLOCATE_Josefin, FSPerm, OldApproximation, ss, pp, xx
 
-  !++++++++++++++++++++++++++++++++++++++++++++
-  REAL(KIND=dp), SAVE :: ErrorBound ,  LowerHorVelLimit, ErrorBoundAbs, ErrorBoundRel  
   !INTEGER :: ACounter, i, j, k, n, NSDOFs, istat 
   ! LOGICAL :: OnlyHorizontalError
 
-  REAL(KIND=dp),ALLOCATABLE :: CoupledSolution(:), ErrorInSIA(:), &
-       NodeWiseError(:)
+  REAL(KIND=dp),ALLOCATABLE :: CoupledSolution(:)
 
-  SAVE OnlyHorizontalError, CoupledSolution, &
-       ErrorInSIA, NodeWiseError, Norm
-  !++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  SAVE OnlyHorizontalError, CoupledSolution, Norm
   !------------------------------------------------------------------------------
 
   INTERFACE
@@ -317,29 +311,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      TimeFileName=GetString( Solver % Values, 'Time File Name', gotIt )
   END IF
 
-
-  IF (CouplApprox) THEN
-     NodeType2Variable => VariableGet( Solver % Mesh % Variables, 'ApproximationLevel' )
-     IF ( ASSOCIATED( NodeType2Variable ) ) THEN
-        NodeType2Perm     => NodeType2Variable % Perm
-        NodeType2Values  => NodeType2Variable % Values
-     ELSE
-        CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <ApproximationLevel>' )
-     END IF
-
-     NodeWiseErrorVariable => VariableGet( Solver % Mesh % Variables, 'SIAError' )
-     IF ( ASSOCIATED(  NodeWiseErrorVariable ) ) THEN
-        NodeWiseErrorPerm     => NodeWiseErrorVariable  % Perm
-        NodeWiseErrorValues   => NodeWiseErrorVariable % Values
-     ELSE
-        CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <SIAError>' )
-     END IF
-
-  END IF
-
-
-
-
   MeshSol => VariableGet( Solver % Mesh % Variables, 'Mesh Velocity')
   NULLIFY( MeshVelocity )
   IF ( ASSOCIATED( MeshSol ) ) THEN
@@ -403,8 +374,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
              RelativeErrorY, RelativeErrorZ, &
              ExtPressure, &
              CoupledSolution, &
-             ErrorInSIA, &
-             NodeWiseError, FSPerm, &
+             FSPerm, &
              STAT=istat )
      END IF
 
@@ -449,8 +419,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
           OldActiveElements(GetNOFActive(Solver)), &
           ExtPressure( N ), SiaNodes(N), &
           CoupledSolution(  SIZE( FlowSolution )), &
-          ErrorInSIA(  SIZE( FlowSolution )), &            
-          NodeWiseError(  Model % Mesh % NumberOfNodes ), &
           FSPerm(SIZE(FlowPerm)),STAT=istat)
 
 
@@ -603,6 +571,17 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      IF (.NOT.GotIt) PseudoPressureUpdate = .FALSE.
   END IF
 
+  IF (CouplApprox) THEN
+     NodeType2Variable => VariableGet( Solver % Mesh % Variables, 'ApproximationLevel' )
+     IF ( ASSOCIATED( NodeType2Variable ) ) THEN
+        NodeType2Perm    => NodeType2Variable % Perm
+        NodeType2Values  => NodeType2Variable % Values
+     ELSE
+        CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <ApproximationLevel>' )
+     END IF
+  END IF
+
+
 
   IF (Timestep==1) THEN
 
@@ -648,16 +627,11 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         WRITE( Message, * ) 'SIA-solution available' 
         CALL Info( 'FlowSolve',Message, Level=4 )
      ELSE
-        WRITE( Message, * ) 'SIA-solution not available' 
-        CALL Info( 'FlowSolve',Message, Level=4 )
+        CALL Fatal( 'FlowSolve','SIA-solution not available, Aborting.' )
      END IF
   END IF !CouplApprox .or. (siaasinital and timestep==1)
 
-
-
   IF (Timestep==1 .AND. CouplApprox) THEN !Sort nodes from input data
-
-
      ! CHECK WHICH NODES ARE FS-NODES and WHICH ARE SIA-NODES
      WRITE( Message, * ) 'Sorting nodes' 
      CALL Info( 'FlowSolve',Message, Level=4 )
@@ -795,8 +769,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
      END IF !End timestep is a resort timestep 
   END IF !End coupling approximations
-
-
 
   IF (CouplApprox .AND. ((MOD(Timestep-FirstReorder,ReorderTimeInterval)==0) .OR. Timestep==FirstReorder) ) THEN !Error Estimation Time
      DoErrorEstimation=.TRUE. 
@@ -1935,16 +1907,11 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
           Timestep, ' and MOD(Timestep,ReorderTimeInterval)=',MOD(Timestep,ReorderTimeInterval)
      CALL Info( 'FlowSolve', Message, Level=4 )
 
-
-
-
-
      IF ((MOD(Timestep-FirstReorder,ReorderTimeInterval)==0 .AND. Timestep .GE. FirstReorder ).OR. Timestep==FirstReorder) THEN !the timestep before rearranging elements 
 
         errortime=CPUTime()
 
         SELECT CASE(ErrorEstimationMethod)
-
 
         CASE('residualbasederrorestimate')
 
@@ -1953,130 +1920,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
         CASE ('solutionbasederrorbound')
 
+            CALL  SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
+                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
 
-
-           !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-           WRITE( Message, * ) 'Computing the Error'
-           CALL Info( 'FlowSolve', Message, Level=4 )
-           
-           ErrorBoundRel = 0.01*GetConstReal(  Solver % Values,  &
-                'Relative Error Allowed In Percent', gotIt )
-
-
-           IF (.NOT. gotIt) THEN
-              WRITE( Message, * ) 'Relative Error Tolerance not found, setting to 15 %'
-              CALL Info( 'FlowSolve', Message, Level=4 )
-              ErrorBoundRel = 0.15
-           END IF
-
-           ErrorBoundAbs = GetConstReal(  Solver % Values,  &
-                'Absolute Error Allowed', gotIt )
-           IF (.NOT. gotIt) THEN
-              WRITE( Message, * ) 'Absolute Error Tolerance not found, setting to 1 m/a'
-              CALL Info( 'FlowSolve', Message, Level=4 )
-              ErrorBoundAbs = 1.0
-           END IF
-
-           LowerHorVelLimit  = GetConstReal(  Solver % Values,  &
-                'Horizontal Velocity Regarded as Zero', gotIt )
-           IF (.NOT. gotIt) THEN
-              WRITE( Message, * ) 'Min hor. vel. in error not found, setting to 0.1 m/a'
-              CALL Info( 'FlowSolve', Message, Level=4 )
-              LowerHorVelLimit = 0.1
-           END IF
-
-           OnlyHorizontalError = GetLogical( Solver % Values, &
-                'Only Compute Horizontal Error', gotIt ) 
-           IF (.NOT. gotIt) THEN
-              WRITE( Message, * ) 'Computing error using only horizontal velocity'
-              CALL Info( 'FlowSolve', Message, Level=4 )
-              OnlyHorizontalError = .TRUE.
-           END IF
-
-           TimeVar => VariableGet( Solver % Mesh % Variables, 'Timestep')
-           Timestep = NINT(Timevar % Values(1))
-
-           ErrorInSIA=FlowSolution-SIAVelPermuted
-           NodeWiseError=0.0_dp
-
-           !if error is to big then do FS
-           NodeType2=0
-           NumberOfFSNodes=0
-           NumberOfSIANodes=0
-
-           DO i = 1, GetNOFActive()
-              Element => GetActiveElement(i)
-              n = GetElementNOFNodes()
-              !     
-              DO j=1,GetElementNOFNOdes()
-                 k = Element % NodeIndexes(j) 
-
-                 IF (NodeType2(k)/=0) CYCLE
-                 
-                 SELECT CASE( NSDOFs )
-                 CASE(3) !2D simulation
-                    IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit) THEN
-
-                       NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
-                            /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))
-
-                       !Weighing absolute and relative error
-                       ErrorBound = MAXVAL((/ErrorBoundAbs &
-                            /ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)), ErrorBoundRel/))
-
-
-                    ELSE
-                       NodeWiseError(k)=0.0_dp
-                    END IF
-                 CASE(4) !3D simulation
-
-                    IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit .AND. &
-                         ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
-                       NodeWiseError(k)=0.5*SQRT( (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
-                            /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))**2.0+ &
-                            (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
-                            /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))**2.0 )  
-                    ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit) THEN
-                       NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
-                            /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))
-                    ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
-                       NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
-                            /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))
-                    ELSE
-                       NodeWiseError(k)=0.0_dp
-                    END IF
-
-                    !Weighing absolute and relative error
-                    ErrorBound = MAXVAL((/ ErrorBoundAbs/SQRT(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 &
-+FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0), ErrorBoundRel/))
-
-                 END SELECT !select dimension
-
-!!!!! SORT NODES
-
-                 IF (NodeWiseError(k)> ErrorBound) THEN !FS-Node 
-                    NumberOfFSNodes=NumberOfFSNodes+1
-                    NodeType2(k) = 2
-                    NodeType2Values(NodeType2Perm(k))=REAL(NodeType2(k))
-                 ELSE    !SIA-Node
-                    NumberOfSIANodes=NumberOfSIANodes+1
-                    NodeType2(k) = 1
-                    NodeType2Values(NodeType2Perm(k))=REAL(NodeType2(k))
-                 END IF
-
-                 NodeWiseErrorValues(NodeWiseErrorPerm(k))=NodeWiseError(k)
-
-              END DO
-           END DO
-
-           !FlowSolution=CoupledSolution !necessary???
-
-       
-           !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-           ! CALL  SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, NodeType2, &
-           !   SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes,ReorderTimeInterval)
         END SELECT
 
         !deallocate stuff you used
