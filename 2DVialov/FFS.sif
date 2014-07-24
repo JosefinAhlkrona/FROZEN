@@ -218,12 +218,11 @@ Solver 8
 !-----------------------------------
   Couple Approximations = Logical True
   SIA as initial condition = Logical True
-  Error Estimation Method = String SolutionBasedErrorBound !ResidualBasedErrorEstimate
+  Error Estimation Method = String "functional"
   Error Estimation Intervals = Integer 1
   Relative Error Allowed In Percent = Real 3.0
   Absolute Error Allowed = Real 0.1 !m/a
 End
-
 
 Solver 9
    !Exec Solver = Never
