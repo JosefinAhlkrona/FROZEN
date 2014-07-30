@@ -1917,8 +1917,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
         SELECT CASE(ErrorEstimationMethod)
         CASE('residual')
-           CALL ResidualEstimate( Model,Solver,dt,TransientSimulation,SIAVelPermuted, &
-                HastighetsError,NodeType2,NumberOfSIANodes,NumberOfFSNodes,ReorderTimeInterval) 
+           CALL ResidualEstimate( Model,Solver,dt,TransientSimulation, &
+               NodeType2,SIAVelPermuted,NumberOfSIANodes,NumberOfFSNodes) 
         CASE ('solution')
            CALL SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
