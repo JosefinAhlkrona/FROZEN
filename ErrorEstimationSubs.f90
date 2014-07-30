@@ -691,13 +691,16 @@ CONTAINS
           SELECT CASE( NSDOFs )
 
           CASE(3) !2D simulation
-             NodeWiseResidual(k)=ABS(residual(NSDOFs*(FlowPerm(k)-1)+1))+ &
-                  ABS(residual(NSDOFs*(FlowPerm(k)-1)+2)) + &
-                  ABS(residual(NSDOFs*(FlowPerm(k)-1)+3))
+             NodeWiseResidual(k)=SQRT(residual(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ &
+                  residual(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
+                  residual(NSDOFs*(FlowPerm(k)-1)+3)**2.0)
 
           CASE(4) !3D simulation              
-                NodeWiseResidual(k)=SQRT(residual(NSDOFs*FlowPerm(k)-3)**2.0+ &
-                     residual(NSDOFs*FlowPerm(k)-2)**2.0+residual(NSDOFs*FlowPerm(k)-1)**2.0)
+                NodeWiseResidual(k)=SQRT(residual(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ &
+                  residual(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
+                  residual(NSDOFs*(FlowPerm(k)-1)+3)**2.0 + &
+                  residual(NSDOFs*(FlowPerm(k)-1)+4)**2.0)
+
           END SELECT
        END DO
     END DO
