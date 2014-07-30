@@ -18,7 +18,7 @@
 ! *  along with this program (in fle fem/GPL-2); if not, write to the 
 ! *  Free Software Foundation, Inc., 5 Franklin Street, Fifth Floor, 
 ! *  Boston, MA 02110-1301, USA.
-! *  hejhej
+! *  
 ! *****************************************************************************/
 !
 !
@@ -51,6 +51,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   USE FreeSurface
 
   USE ErrorEstimationSubs
+  USE Functionals
 
   !------------------------------------------------------------------------------
   IMPLICIT NONE
@@ -597,6 +598,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         END IF
         ErrorEstimationMethod = GetString(  Solver % Values,  &
              'Error Estimation Method', gotIt )
+        IF (.NOT. gotIt) THEN
+                   CALL Fatal( 'FlowSolve: ', 'Keyword ErrorEstimationMethod is not set. Aborting.')
+        END IF
      END IF !CouplApprox
 
      IF (CouplApprox .OR. SIAasInitial) THEN
@@ -1609,7 +1613,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            END IF
         END DO
 
-
         DO i=1,A % NumberOfRows
            CALL AddToMatrixElement(A_Coupling,i,i,0._dp) !fill in diagonal
         END DO
@@ -1620,7 +1623,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            CALL List_toCRSMatrix(A_FS)
            ALLOCATE(A_Coupling  %  RHS(A_Coupling % NumberOfRows)); &
                 A_Coupling % RHS=0._dp
-
            xx => Solver % Variable % Values
            ALLOCATE(yy(size(xx)));yy=0
         END IF
@@ -1629,7 +1631,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         !     
         !Setting SIA solution as a dirichlet condition for the FS-area.
 
-        IF ( ParEnv % PEs > 1 ) THEN !!!!!!!!!!!!!!!!!!!!!! we have a parallel run
+        IF ( ParEnv % PEs > 1 ) THEN ! we have a parallel run
            ss => A
            Solver % Matrix => A_Coupling
            A => Solver % Matrix
@@ -1643,8 +1645,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
            Solver % Matrix => ss
            A => Solver % Matrix
-        ELSE !!!!!!!!!!!!!!!!!!!!!! serial run
-
+        ELSE ! serial run
 
            CALL CRS_MatrixVectorMultiply(A_Coupling,SIAVelPermuted,yy)
 
@@ -1754,12 +1755,15 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         gluetime=CPUTime()-gluetime
 
      ELSE
-        IF (DoingErrorEstimation) THEN
+        IF (DoingErrorEstimation) THEN !redundant??
            CoupledSolution=FlowSolution !dont wanna overwrite the coupled solution
         END IF
-
-        !Solve large system
-        UNorm = DefaultSolve() !UNorm
+        
+        SELECT CASE(ErrorEstimationMethod)
+        CASE('solution') 
+           !Solve large system
+           UNorm = DefaultSolve() !UNorm
+        END SELECT
 
      END IF !CouplApprox .AND. .NOT. DoingErrorEsimation
 
@@ -1912,17 +1916,15 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         errortime=CPUTime()
 
         SELECT CASE(ErrorEstimationMethod)
-
-        CASE('residualbasederrorestimate')
-
+        CASE('residual')
            CALL ResidualEstimate( Model,Solver,dt,TransientSimulation,SIAVelPermuted, &
                 HastighetsError,NodeType2,NumberOfSIANodes,NumberOfFSNodes,ReorderTimeInterval) 
-
-        CASE ('solutionbasederrorbound')
-
-            CALL  SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
-                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
-
+        CASE ('solution')
+           CALL SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
+                NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
+        CASE ('functional')
+           CALL FunctionalErrorEstimate( Model,Solver,dt,TransientSimulation, &
+                NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
         END SELECT
 
         !deallocate stuff you used

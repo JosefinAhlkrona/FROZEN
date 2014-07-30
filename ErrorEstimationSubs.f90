@@ -60,6 +60,7 @@ CONTAINS
 
     REAL(KIND=dp), SAVE :: ErrorBound,  LowerHorVelLimit, ErrorBoundAbs, ErrorBoundRel  
 
+
     SAVE OnlyHorizontalError, CoupledSolution, &
          ErrorInSIA, NodeWiseError
 
@@ -67,7 +68,6 @@ CONTAINS
 
     WRITE( Message, * ) 'Computing the Error'
     CALL Info( 'FlowSolve', Message, Level=4 )
-
 
     FlowSol => Solver % Variable
     NSDOFs         =  FlowSol % DOFs
@@ -142,16 +142,12 @@ CONTAINS
 
     ErrorInSIA=FlowSolution-SIAVelPermuted
 
-    WRITE(*,*) 'a'
     NodeWiseError=0.0_dp
-    WRITE(*,*) '1'
 
     !if error is to big then do FS
     NodeType2=0
     NumberOfFSNodes=0
     NumberOfSIANodes=0
-
-    WRITE(*,*) 'b'
 
     DO i = 1, GetNOFActive()
        Element => GetActiveElement(i)
@@ -162,7 +158,6 @@ CONTAINS
 
           IF (NodeType2(k)/=0) CYCLE
 
-          WRITE(*,*) 'hej'
           SELECT CASE( NSDOFs )
           CASE(3) !2D simulation
              IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit) THEN
@@ -174,13 +169,9 @@ CONTAINS
                 ErrorBound = MAXVAL((/ErrorBoundAbs &
                      /ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)), ErrorBoundRel/))
 
-
              ELSE
                 NodeWiseError(k)=0.0_dp
              END IF
-             WRITE(*,*) 'd'
-
-             WRITE(*,*) 'hej 1'
 
           CASE(4) !3D simulation
 
@@ -206,9 +197,6 @@ CONTAINS
 
           END SELECT !select dimension
 
-          WRITE(*,*) 'c'
-
-
 !!!!! SORT NODES
 
           IF (NodeWiseError(k)> ErrorBound) THEN !FS-Node 
@@ -232,6 +220,309 @@ CONTAINS
   END SUBROUTINE SolutionErrorEstimate
 
   !-------------------------------------------------------------------------------------
+
+
+  SUBROUTINE FunctionalErrorEstimate( Model,Solver,dt,TransientSimulation, &
+       NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
+    !******************************************************************************
+    !
+    !  Estimate Approximation Error
+    !
+    !  ARGUMENTS:
+    !
+    !  TYPE(Model_t) :: Model,  
+    !     INPUT: All model information (mesh,materials,BCs,etc...)
+    !
+    !  TYPE(Solver_t) :: Solver
+    !     INPUT: Linear equation solver options
+    !
+    !  REAL(KIND=dp) :: dt,
+    !     INPUT: Timestep size for time dependent simulations
+    !
+    !******************************************************************************
+    !------------------------------------------------------------------------------
+    USE DefUtils
+    USE Functionals
+
+    IMPLICIT NONE
+
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t), TARGET :: Solver
+
+    REAL(KIND=dp) :: dt
+    LOGICAL :: TransientSimulation
+
+    INTEGER, ALLOCATABLE, intent(inout) :: NodeType2(:)
+    REAL(KIND=dp),ALLOCATABLE, intent(in) :: SIAVelPermuted(:)
+    INTEGER, intent(out) :: NumberOfSIANodes, NumberOfFSNodes    
+
+    !------------------------------------------------------------------------------
+    !    Local variables
+    !------------------------------------------------------------------------------
+    TYPE(Element_t),POINTER :: Element
+    TYPE(Matrix_t),POINTER :: A, AT
+
+    INTEGER :: ACounter, i, j, k, n, NSDOFs, istat 
+    LOGICAL :: OnlyHorizontalError
+    LOGICAL :: AllocationsDone = .FALSE.
+    LOGICAL :: gotIt
+
+    REAL(KIND=dp),ALLOCATABLE :: x(:), &
+         NodeWiseError(:), &
+         Ax(:),residual(:), functional(:)
+
+    REAL(KIND=dp) :: UNorm
+
+    TYPE(Variable_t), POINTER :: FlowSol, NodeType2Variable
+    TYPE(Variable_t), POINTER ::  NodeWiseErrorVariable
+    INTEGER, POINTER :: FlowPerm(:), NodeType2Perm(:), NodeWiseErrorPerm(:)
+    REAL(KIND=dp), POINTER :: FlowSolution(:), ForceVector(:), &
+         NodeType2Values(:), NodeWiseErrorValues(:)
+    INTEGER, SAVE :: Timestep 
+    TYPE(Variable_t), POINTER :: TimeVar
+
+    REAL(KIND=dp), SAVE :: ErrorBound, adv,xdf,av,xf
+
+    REAL(KIND=dp), POINTER :: xx(:)
+    TYPE(Matrix_t), POINTER :: ss
+    INTEGER, POINTER :: pp(:)
+
+    REAL(KIND=dp), POINTER :: functionalpointer(:)
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: FunctionalName
+    
+    TARGET :: x, functional
+
+    SAVE OnlyHorizontalError, &
+         NodeWiseError, AT, functional, functionalpointer, &
+         pp, ss, xx, &
+         Ax, residual, x, FunctionalName
+
+    !-----------------------------------------------------------------
+    ! INITIALIZATIONS AND ALLOCATIONS
+    !----------------------------------------------------------------
+
+    WRITE( Message, * ) 'Computing the Error'
+    CALL Info( 'FlowSolve', Message, Level=4 )
+
+    FlowSol => Solver % Variable
+    NSDOFs         =  FlowSol % DOFs
+    FlowPerm       => FlowSol % Perm
+    FlowSolution   => FlowSol % Values
+
+    A => Solver % Matrix
+
+    AT => AllocateMatrix()  !Will be transponate of A
+    AT % Format = MATRIX_LIST
+
+    IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+       IF( AllocationsDone ) THEN
+          DEALLOCATE(                               &
+               NodeWiseError, &
+               AT % Rows, &
+               AT % Values, &
+               AT % Cols, &
+               x, &
+               functional, &
+               Ax, &
+               STAT=istat )
+       END IF
+       ALLOCATE( &
+            NodeWiseError(  Model % Mesh % NumberOfNodes ), &  
+            AT % Rows(SIZE(A % Rows)), &
+            AT % Values(SIZE(A % Values)), &
+            AT % Cols(SIZE(A % Cols)), &
+            x(SIZE(A % RHS)), &
+            functional(SIZE(A % RHS)), &
+            Ax(SIZE(A % RHS)), &
+            STAT=istat)
+       AllocationsDone = .TRUE.
+    END IF
+
+    NodeType2Variable => VariableGet( Solver % Mesh % Variables, 'ApproximationLevel' )
+    IF ( ASSOCIATED( NodeType2Variable ) ) THEN
+       NodeType2Perm    => NodeType2Variable % Perm
+       NodeType2Values  => NodeType2Variable % Values
+    ELSE
+       CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <ApproximationLevel>' )
+    END IF
+
+    NodeWiseErrorVariable => VariableGet( Solver % Mesh % Variables, 'SIAError' )
+    IF ( ASSOCIATED(  NodeWiseErrorVariable ) ) THEN
+       NodeWiseErrorPerm     => NodeWiseErrorVariable  % Perm
+       NodeWiseErrorValues   => NodeWiseErrorVariable % Values
+    ELSE
+       CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <SIAError>' )
+    END IF
+
+    TimeVar => VariableGet( Solver % Mesh % Variables, 'Timestep')
+    Timestep = NINT(Timevar % Values(1))
+
+  
+
+    FunctionalName  = GetString(  Solver % Values,  &
+         'Functional', gotIt )
+    IF (.NOT. gotIt) THEN
+       CALL Fatal( 'Error Estimation: ', 'Functional not chosen, aborting.')
+    END IF
+    !-----------------------------------------------------------------------------
+    !   GET TRANSPONATE OF SYSTEM MATRIX A^T, and the functional
+    !-----------------------------------------------------------------------------
+
+    !First copy A to AT
+    AT = A
+
+    !Transpose AT
+    AT = CRS_Transpose(AT)
+
+    !Allocate the right hand side
+    ALLOCATE(AT % RHS(SIZE(A % RHS)))
+
+    functional = 0.0
+    functionalpointer => functional
+
+    !Get the functional  
+    SELECT CASE(FunctionalName)
+    CASE('flux across point') 
+       CALL FluxThroughLine( Model,Solver,dt,TransientSimulation, &
+            functionalpointer)!  1.0_dp
+    CASE DEFAULT
+       Call FATAL('Error Estimation', 'No valid functional chosen')
+    END SELECT
+
+    AT % RHS = functional
+
+    !-----------------------------------------------------------------------------
+    !   SOLVE A^T x_imp = a 
+    !-----------------------------------------------------------------------------
+
+    !Save old system matrix
+    pp => Solver % Variable % Perm
+    ss => Solver % Matrix
+    xx => Solver % Variable % Values
+
+    !Set system matrix to AT, and values to x
+    Solver % Matrix => AT 
+    A => Solver % Matrix
+    Solver % Variable % Values => x
+
+
+    !Prepare some parallell stuff
+    IF (ParEnv % PEs>1) THEN
+       A % Comm = MPI_COMM_WORLD
+       IF(.NOT.ASSOCIATED(A % ParMatrix)) THEN              
+          CALL ParallelInitMatrix(Solver,A,FlowPerm)
+       END IF
+    END IF
+
+    !Solve AT x = a
+    Solver % Variable  % Values=0._dp
+    UNorm = DefaultSolve() 
+
+    !Reset system matrix to the old one ... did I really get something in x now?
+    Solver % Matrix => ss
+    A => Solver % Matrix
+    Solver % Variable % Perm => pp
+    Solver % Variable % Values => xx 
+
+    !-----------------------------------------------------------------------------
+    !   COMPUTE residual
+    !-----------------------------------------------------------------------------
+
+    IF ( ParEnv % PEs > 1 ) THEN ! we have a parallel run
+       ss => A
+       A => Solver % Matrix
+       Solver % Matrix % Comm = MPI_COMM_WORLD
+
+       IF(.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A,FlowPerm)
+
+       CALL ParallelInitSolve(A,SIAVelPermuted,Ax,Ax)
+       CALL ParallelMatrixVector( A, SIAVelPermuted, Ax, .TRUE. )
+       CALL ParallelSumVector(A, Ax)
+
+       Solver % Matrix => ss
+       A => Solver % Matrix
+    ELSE ! serial run
+
+       CALL CRS_MatrixVectorMultiply(Solver % Matrix,SIAVelPermuted,Ax)
+    END IF
+
+    residual = Ax - Solver % Matrix % RHS
+
+    !-----------------------------------------------------------------------------
+    !   Compute x^T*residual (if functional error is too big)
+    !-----------------------------------------------------------------------------
+
+    adv=0
+    xdf=0
+    av=0
+    xf=0
+    !compute elements of x^T*residual
+    DO i = 1, Model % Mesh % NumberOfNodes
+       NodeWiseErrorValues(NodeWiseErrorPerm(i))=0.0
+       DO k=1, NSDOFs
+          NodeWiseErrorValues(NodeWiseErrorPerm(i))=NodeWiseErrorValues(NodeWiseErrorPerm(i))+ &
+               ABS(x(NSDOFs*(FlowPerm(i)-1)+k)*residual(NSDOFs*(FlowPerm(i)-1)+k))
+
+          adv= adv+functional(NSDOFs*(FlowPerm(i)-1)+k)*(SIAVelPermuted(NSDOFs*(FlowPerm(i)-1)+k)- &
+               FlowSolution(NSDOFs*(FlowPerm(i)-1)+k))
+          xdf=xdf+ x(NSDOFs*(FlowPerm(i)-1)+k)*residual(NSDOFs*(FlowPerm(i)-1)+k)
+
+          av= av+functional(NSDOFs*(FlowPerm(i)-1)+k)*FlowSolution(NSDOFs*(FlowPerm(i)-1)+k)
+          xf=xf+ x(NSDOFs*(FlowPerm(i)-1)+k)*Solver % Matrix % RHS(NSDOFs*(FlowPerm(i)-1)+k)
+
+       END DO
+    END DO
+
+    !-----------------------------------------------------------------------------
+    !   Check x^T*residual (if functional error is too big do FS)
+    !-----------------------------------------------------------------------------
+
+    open (unit=135, file="FunctionalStuff.dat",POSITION='APPEND')
+    WRITE(135,*)  Timestep
+
+    WRITE(135,*)  adv
+    WRITE(135,*)  av
+    WRITE(135,*)  xdf
+    WRITE(135,*)  xf
+
+    ErrorBound = GetConstReal( Solver % Values, 'Nodewise limit for dual problem', gotIt )    
+    IF (.NOT. gotIt) THEN
+       WRITE( Message, * ) 'Nodewise limit for dual problem not found, setting to 5.0'
+       CALL Info( 'Error Estimation: ',Message, Level=4 )
+       ErrorBound = 5.0
+    END IF
+
+    NodeType2=0
+    NumberOfFSNodes=0
+    NumberOfSIANodes=0
+    DO i = 1, Model % Mesh % NumberOfNodes
+       !if error is to big then do FS
+       IF (NodeWiseErrorValues(NodeWiseErrorPerm(i))> ErrorBound) THEN !FS-Node 
+          NumberOfFSNodes=NumberOfFSNodes+1
+          NodeType2(i) = 2
+          NodeType2Values(NodeType2Perm(i))=REAL(NodeType2(i))
+       ELSE    !SIA-Node
+          NumberOfSIANodes=NumberOfSIANodes+1
+          NodeType2(i) = 1
+          NodeType2Values(NodeType2Perm(i))=REAL(NodeType2(i))
+       END IF
+
+       WRITE(135,*) i,NodeWiseErrorValues(NodeWiseErrorPerm(i))
+
+    END DO
+
+    WRITE(135,*) '***************************************************************'
+    WRITE(135,*) '                                                               '
+
+    close(135)  
+
+    DEALLOCATE(AT % RHS)
+
+ END SUBROUTINE FunctionalErrorEstimate
+
+
+    !-------------------------------------------------------------------
 
   SUBROUTINE ResidualEstimate( Model,Solver,dt,TransientSimulation,SIAVelPermuted, &
        HastighetsError,NodeType2,NumberOfSIANodes,NumberOfFSNodes,ReorderTimeInterval)

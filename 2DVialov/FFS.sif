@@ -67,7 +67,7 @@ Simulation
   Simulation Type = Transient 
   Timestepping Method = "BDF"
   BDF Order = 1
-  Timestep Intervals = 600 !50 years
+  Timestep Intervals = 30 !50 years
   Timestep Sizes =  0.0833333333    !1 month = 0.0833333333 year
   
   Steady State Max Iterations = 1
@@ -198,11 +198,11 @@ Solver 8
   Linear System Scaling=False
   Optimize Bandwidth = False
 
-  Nonlinear System Convergence Tolerance = 1.0E-02
+  Nonlinear System Convergence Tolerance = 1.0E-05
   Nonlinear System Max Iterations = 100
   Nonlinear System Newton After Iterations = 500
   Nonlinear System Newton After Tolerance = 1.0e-16
-  Nonlinear System Relaxation Factor = 0.5 !below to stabilize, above to speed up
+  Nonlinear System Relaxation Factor = 0.9 !below to stabilize, above to speed up
   Linear System Solver = Direct!Iterative
   Linear System Iterative Method=BiCGStabl
   Linear System Max Iterations=1000
@@ -216,13 +216,24 @@ Solver 8
   Solver Timing Cumulative = Logical True
 
 !-----------------------------------
+
   Couple Approximations = Logical True
   SIA as initial condition = Logical True
-  Error Estimation Method = String "functional"
+
   Error Estimation Intervals = Integer 1
+
+  Error Estimation Method = String "solution"
+
+  Functional = String "flux across point"
+  Point x-coord = Real 500000
+  Nodewise limit for dual problem = Real 10.0
+  Active Coordinate = 2
+
   Relative Error Allowed In Percent = Real 3.0
   Absolute Error Allowed = Real 0.1 !m/a
+
 End
+
 
 Solver 9
    !Exec Solver = Never
@@ -471,14 +482,14 @@ Boundary Condition 2
   Name = "Bottom"
   Bottom Surface = Real 0.0
   Body Id = 3
-  Mass Consistent Normals = Logical False!True
-  Normal-Tangential Velocity = Logical False!True
-  Flow Force BC = Logical True
-  Slip Coefficient 2  = Real 1.0e3 !Equals Beta
+  !Mass Consistent Normals = Logical False!True
+  !Normal-Tangential Velocity = Logical False!True
+  !Flow Force BC = Logical True
+  !Slip Coefficient 2  = Real 1.0e3 !Equals Beta
   !Slip Coefficient 3  = Real 1.0e3 !Equals Beta
   ComputeNormal = Logical True
   Velocity 1 = Real 0.0
-  !Velocity 2 = Real 0.0
+  Velocity 2 = Real 0.0
 End
 
 Boundary Condition 3

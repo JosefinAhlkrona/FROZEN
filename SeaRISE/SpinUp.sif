@@ -499,7 +499,7 @@ Solver 16 !DONT EXECUTE, just for the purpose of restarting!!
 
 !-----------------------------------
   SIA as initial condition = Logical True 
-  Error Estimation Method = String SolutionBasedErrorBound !ResidualBasedErrorEstimate
+  Error Estimation Method = String "solution"
   Couple Approximations = Logical True
   Error Estimation Intervals = Integer 1
   Relative Error Allowed In Percent = Real 5.0
