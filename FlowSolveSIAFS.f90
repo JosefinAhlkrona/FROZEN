@@ -691,10 +691,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      WRITE(134,*) '***************************************************************'
      WRITE(134,*)  'At realtime ', RealTime(), ' Timestep = ', Timestep
      WRITE(134,*) '***************************************************************'
-     WRITE(134,*)  'Number of FS Nodes: ', NumberOfFSNodes
-     WRITE(134,*)  'Number of SIA Nodes: ', NumberOfSIANodes
-
-
+     WRITE(134,*)   NumberOfFSNodes !'Number of FS Nodes: ',
+     WRITE(134,*)   NumberOfSIANodes !'Number of SIA Nodes: ', 
      close(134)
   END IF
 
@@ -1754,11 +1752,14 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         END DO
         gluetime=CPUTime()-gluetime
 
+     ELSE IF (.NOT. CouplApprox) THEN
+        UNorm = DefaultSolve() !UNorm
      ELSE
         IF (DoingErrorEstimation) THEN !redundant??
            CoupledSolution=FlowSolution !dont wanna overwrite the coupled solution
         END IF
-        
+
+
         SELECT CASE(ErrorEstimationMethod)
         CASE('solution') 
            !Solve large system
@@ -1974,20 +1975,19 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   IF (TimeStuff) THEN
      open (unit=134, file=TimeFileName,POSITION='APPEND')
 
-     WRITE(134,*)  'Number of SIA elements: ', NOFSIAElements
-     WRITE(134,*)  'Number of FS elements: ', NOFFSElements
-     WRITE(134,*)  'Number of Assemble-elements: ', NOFAssembleElements
-     WRITE(134,*)  'Total time for FlowSolve: ', totaltime
-     WRITE(134,*)  'Number of Non-linear iterations ', numberofiter
-     WRITE(134,*)  'Sort Elements, reduce NOF active Elemts etc: ', sorttime 
-     WRITE(134,*)  'Rearranging matrix: ', setupsys 
-     WRITE(134,*)  'assemblytime (including rearranging) ', atmean/numberofiter  
-     WRITE(134,*)  'solutiontime (including gluing): ', stmean/numberofiter  
-     WRITE(134,*)  'Gluing together solution: ', gluetimemean/numberofiter 
-     WRITE(134,*)  'assemblytime  errorest ', aterror 
-     WRITE(134,*)  'solutiontime errorest: ', sterror
-
-     WRITE(134,*)  'Errorestimation: ', errortime  
+     WRITE(134,*)   NOFSIAElements!, 'Number of SIA elements: '
+     WRITE(134,*)   NOFFSElements!, 'Number of FS elements: '
+     WRITE(134,*)   NOFAssembleElements!, 'Number of Assemble-elements: '
+     WRITE(134,*)   totaltime!, 'Total time for FlowSolve: '
+     WRITE(134,*)   numberofiter!, 'Number of Non-linear iterations '
+     WRITE(134,*)   sorttime!,  'Sort Elements, reduce NOF active Elemts etc: '
+     WRITE(134,*)   setupsys!,  'Rearranging matrix: ' 
+     WRITE(134,*)   atmean/numberofiter!,   'assemblytime (including rearranging) '
+     WRITE(134,*)   stmean/numberofiter!,   'solutiontime (including gluing): '
+     WRITE(134,*)   gluetimemean/numberofiter!,   'Gluing together solution: '
+     WRITE(134,*)   aterror!,  'assemblytime  errorest '
+     WRITE(134,*)   sterror!, 'solutiontime errorest: '
+     WRITE(134,*)   errortime!,  'Errorestimation: '
 
      WRITE(134,*) '***************************************************************'
      WRITE(134,*) '                                                               '
