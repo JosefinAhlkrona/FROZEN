@@ -67,7 +67,7 @@ CONTAINS
     !-----------------------------------------------------------------
 
     WRITE( Message, * ) 'Computing the Error'
-    CALL Info( 'FlowSolve', Message, Level=4 )
+    CALL Info( 'Error Estimation', Message, Level=4 )
 
     FlowSol => Solver % Variable
     NSDOFs         =  FlowSol % DOFs
@@ -600,6 +600,7 @@ CONTAINS
     FlowPerm       => FlowSol % Perm
     FlowSolution   => FlowSol % Values
     
+    A => Solver % Matrix
     !-----------------------------------------------------------------
     ! INITIALIZATIONS AND ALLOCATIONS
     !-----------------------------------------------------------------
@@ -691,12 +692,12 @@ CONTAINS
           SELECT CASE( NSDOFs )
 
           CASE(3) !2D simulation
-             NodeWiseResidual(k)=SQRT(residual(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ &
+             NodeWiseResidual(k)=SQRT(residual(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
                   residual(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
                   residual(NSDOFs*(FlowPerm(k)-1)+3)**2.0)
 
           CASE(4) !3D simulation              
-                NodeWiseResidual(k)=SQRT(residual(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ &
+                NodeWiseResidual(k)=SQRT(residual(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
                   residual(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
                   residual(NSDOFs*(FlowPerm(k)-1)+3)**2.0 + &
                   residual(NSDOFs*(FlowPerm(k)-1)+4)**2.0)
@@ -739,5 +740,197 @@ CONTAINS
 
   END SUBROUTINE ResidualEstimate
 
+
+
+
+  SUBROUTINE SaveErrorMeasures( Model,Solver,dt,TransientSimulation, &
+      SIAVelPermuted)
+    !******************************************************************************
+    !
+    !  Estimate Approximation Error
+    !
+    !  ARGUMENTS:
+    !
+    !  TYPE(Model_t) :: Model,  
+    !     INPUT: All model information (mesh,materials,BCs,etc...)
+    !
+    !  TYPE(Solver_t) :: Solver
+    !     INPUT: Linear equation solver options
+    !
+    !  REAL(KIND=dp) :: dt,
+    !     INPUT: Timestep size for time dependent simulations
+    !
+    !******************************************************************************
+    !------------------------------------------------------------------------------
+    USE DefUtils
+    USE Functionals
+
+    IMPLICIT NONE
+
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t), TARGET :: Solver
+
+    REAL(KIND=dp) :: dt
+    LOGICAL :: TransientSimulation
+
+    REAL(KIND=dp),ALLOCATABLE, intent(in) :: SIAVelPermuted(:)
+
+    !------------------------------------------------------------------------------
+    !    Local variables
+    !------------------------------------------------------------------------------
+    TYPE(Element_t),POINTER :: Element
+    TYPE(Matrix_t),POINTER :: A
+
+    INTEGER :: ACounter, i, j, k, n, NSDOFs, istat 
+    LOGICAL :: AllocationsDone = .FALSE.
+    LOGICAL :: gotIt
+
+    REAL(KIND=dp),ALLOCATABLE :: Ax(:),residual(:), &
+         functional(:), nodewiseresidual(:)
+
+    REAL(KIND=dp) :: UNorm
+
+    TYPE(Variable_t), POINTER :: FlowSol
+    INTEGER, POINTER :: FlowPerm(:)
+    REAL(KIND=dp), POINTER :: FlowSolution(:)
+    INTEGER, SAVE :: Timestep 
+    TYPE(Variable_t), POINTER :: TimeVar
+
+    REAL(KIND=dp), SAVE :: av
+
+    REAL(KIND=dp), POINTER :: xx(:)
+    TYPE(Matrix_t), POINTER :: ss
+    INTEGER, POINTER :: pp(:)
+
+    REAL(KIND=dp), POINTER :: functionalpointer(:)
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: FunctionalName
+
+    TARGET :: functional
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: TimeFileName
+
+    SAVE functional, functionalpointer, &
+         pp, ss, xx, &
+         Ax, residual, FunctionalName, nodewiseresidual
+
+    !-----------------------------------------------------------------
+    ! INITIALIZATIONS AND ALLOCATIONS
+    !----------------------------------------------------------------
+
+    WRITE( Message, * ) 'Computing the Error'
+    CALL Info( 'FlowSolve', Message, Level=4 )
+
+    FlowSol => Solver % Variable
+    NSDOFs         =  FlowSol % DOFs
+    FlowPerm       => FlowSol % Perm
+    FlowSolution   => FlowSol % Values
+
+    A => Solver % Matrix
+
+    IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+       IF( AllocationsDone ) THEN
+          DEALLOCATE(                               &
+               nodewiseresidual, &
+               functional, &
+               Ax, &
+               STAT=istat )
+       END IF
+       ALLOCATE( &
+            nodewiseresidual(  Model % Mesh % NumberOfNodes ), &  
+            functional(SIZE(A % RHS)), &
+            Ax(SIZE(A % RHS)), &
+            STAT=istat)
+       AllocationsDone = .TRUE.
+    END IF
+
+
+    TimeVar => VariableGet( Solver % Mesh % Variables, 'Timestep')
+    Timestep = NINT(Timevar % Values(1))
+
+    FunctionalName  = GetString(  Solver % Values,  &
+         'Functional', gotIt )
+    IF (.NOT. gotIt) THEN
+       CALL Fatal( 'Error Estimation: ', 'Functional not chosen, aborting.')
+    END IF
+    !-----------------------------------------------------------------------------
+    !   Get the functional
+    !-----------------------------------------------------------------------------
+
+    functional = 0.0
+    functionalpointer => functional
+
+    !Get the functional  
+    SELECT CASE(FunctionalName)
+    CASE('flux across point') 
+       CALL FluxThroughLine( Model,Solver,dt,TransientSimulation, &
+            functionalpointer)!  1.0_dp
+    CASE DEFAULT
+       Call FATAL('Error Estimation', 'No valid functional chosen')
+    END SELECT
+
+  
+    !-----------------------------------------------------------------------------
+    !   COMPUTE residual
+    !-----------------------------------------------------------------------------
+
+    IF ( ParEnv % PEs > 1 ) THEN ! we have a parallel run
+       ss => A
+       A => Solver % Matrix
+       Solver % Matrix % Comm = MPI_COMM_WORLD
+
+       IF(.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A,FlowPerm)
+
+       CALL ParallelInitSolve(A,SIAVelPermuted,Ax,Ax)
+       CALL ParallelMatrixVector( A, SIAVelPermuted, Ax, .TRUE. )
+       CALL ParallelSumVector(A, Ax)
+
+       Solver % Matrix => ss
+       A => Solver % Matrix
+    ELSE ! serial run
+
+       CALL CRS_MatrixVectorMultiply(Solver % Matrix,SIAVelPermuted,Ax)
+    END IF
+
+    residual = Ax - Solver % Matrix % RHS
+
+    !-----------------------------------------------------------------------------
+    !   Compute flux and nodewise residual
+    !-----------------------------------------------------------------------------
+
+    av=0
+    nodewiseresidual=0.0
+    DO i = 1, Model % Mesh % NumberOfNodes
+       DO k=1, NSDOFs
+          av= av+functional(NSDOFs*(FlowPerm(i)-1)+k)*FlowSolution(NSDOFs*(FlowPerm(i)-1)+k)
+       END DO
+       nodewiseresidual(i)= SQRT(residual(NSDOFs*(FlowPerm(i)-1)+1)**2.0 + &
+                  residual(NSDOFs*(FlowPerm(i)-1)+2)**2.0 + &
+                  residual(NSDOFs*(FlowPerm(i)-1)+3)**2.0)
+    END DO
+
+    !-----------------------------------------------------------------------------
+    !   WRITE TO FILE
+    !-----------------------------------------------------------------------------
+    
+    TimeFileName=GetString( Solver % Values, 'Error File Name', gotIt )
+
+    open (unit=201, file=TimeFileName,POSITION='APPEND')
+
+    WRITE(201,*) '***************************************************************'
+
+    WRITE(201,*)  Timestep
+    WRITE(201,*)  av
+
+    DO i = 1, Model % Mesh % NumberOfNodes
+       WRITE(201,*) i,nodewiseresidual(i)
+    END DO
+
+    WRITE(201,*) '***************************************************************'
+    WRITE(201,*) '                                                               '
+
+    close(201)  
+
+  END SUBROUTINE SaveErrorMeasures
 
 END MODULE ErrorEstimationSubs
