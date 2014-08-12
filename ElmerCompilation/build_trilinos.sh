@@ -32,6 +32,8 @@ cd builddir
 # You have to use a modified version of buildelmer.sh to be able to use this, as the file naming scheme is
 # a bit different than the old Debian binary
 
+install_directory="/usr/include/trilinos-11.2.5/"
+
 # this is a tested serial compilation
 
 #c_compiler=$( which gcc )
@@ -54,7 +56,7 @@ c_compiler=$( which mpicc )
 gpp_compiler=$( which mpicxx )
 fortran_compiler=$( which mpif90 )
 
-cmake -DCMAKE_C_COMPILER=${c_compiler} -DCMAKE_CXX_COMPILER=${gpp_compiler} -DCMAKE_Fortran_COMPILER=${fortran_compiler} -DTrilinos_ENABLE_ALL_PACKAGES=ON -DCMAKE_INSTALL_PREFIX=/usr/include/trilinos/ -DTPL_ENABLE_MPI=ON   "${source_path}"
+cmake -DCMAKE_C_COMPILER=${c_compiler} -DCMAKE_CXX_COMPILER=${gpp_compiler} -DCMAKE_Fortran_COMPILER=${fortran_compiler} -DTrilinos_ENABLE_ALL_PACKAGES=ON -DCMAKE_INSTALL_PREFIX=${install_directory} -DBUILD_SHARED_LIBS:BOOL=ON -DTPL_ENABLE_MPI=ON   "${source_path}"
 
 
 make -j${build_nodes} install
