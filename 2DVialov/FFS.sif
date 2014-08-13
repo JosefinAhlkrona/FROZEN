@@ -1,4 +1,4 @@
-$name = "FFS"
+$name = "FFSmesh"
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! HEADER
@@ -67,7 +67,7 @@ Simulation
   Simulation Type = Transient 
   Timestepping Method = "BDF"
   BDF Order = 1
-  Timestep Intervals = 30 !50 years
+  Timestep Intervals = 20 !50 years
   Timestep Sizes =  0.0833333333    !1 month = 0.0833333333 year
   
   Steady State Max Iterations = 1
@@ -129,6 +129,8 @@ Solver 4
   Linear System Solver = "Direct"
   Linear System Direct Method = mumps
   Variable = -nooutput flux0
+  Solver Timing = Logical True  
+  Solver Timing Cumulative = Logical True
 End
 
 Solver 5
@@ -139,7 +141,9 @@ Solver 5
   Target Variable = String "H grad 1"
   Linear System Solver = "Direct"
   Linear System Direct Method = mumps
-  Variable = -nooutput flux1
+  Variable = -nooutput flux1  
+  Solver Timing = Logical True  
+  Solver Timing Cumulative = Logical True
 End
 
 Solver 6 !I dont use it for this flat bedrock
@@ -150,7 +154,9 @@ Solver 6 !I dont use it for this flat bedrock
   Target Variable = String "BedrockElevation"
   Linear System Solver = "Direct"
   Linear System Direct Method = mumps
-  Variable = -nooutput flux3
+  Variable = -nooutput flux3  
+  Solver Timing = Logical True  
+  Solver Timing Cumulative = Logical True
 End
 
 !*******************************************
@@ -174,9 +180,7 @@ Solver 7
 
 
   ! --- Ta tiden ----
-  Solver Timing = Logical True
-  Linear System Timing = Logical True
-  Linear System Timing Cumulative = Logical True
+  Solver Timing = Logical True  
   Solver Timing Cumulative = Logical True
 End
 
@@ -207,31 +211,39 @@ Solver 8
   Linear System Iterative Method=BiCGStabl
   Linear System Max Iterations=1000
   Linear System Preconditioning=ilu
-  Linear System Convergence Tolerance=1e-9
+  Linear System Convergence Tolerance=1e-3
   Linear System Direct Method = umfpack
 
-  Solver Timing = Logical True
-  Linear System Timing = Logical True
-  Linear System Timing Cumulative = Logical True
+  Solver Timing = Logical True  
   Solver Timing Cumulative = Logical True
-
 !-----------------------------------
 
   Couple Approximations = Logical True
-  SIA as initial condition = Logical True
+  SIA as initial condition = Logical False
 
   Error Estimation Intervals = Integer 1
 
   Error Estimation Method = String "solution"
 
+!functional based error estimation
   Functional = String "flux across point"
   Point x-coord = Real 500000
   Nodewise limit for dual problem = Real 10.0
   Active Coordinate = 2
 
+!solution based error estimation
   Relative Error Allowed In Percent = Real 3.0
   Absolute Error Allowed = Real 0.1 !m/a
 
+!residual based error estimation
+  Maximum Allowed Residual = Real 10000.0
+
+!Timing
+Do Timing = Logical True
+Time File Name = String "times"$name$.dat
+
+Save Error Data = Logical False
+Error File Name = String "errordat"$name$".dat
 End
 
 
@@ -331,6 +343,21 @@ Single Precision = Logical False ! double precision is the default
 ! In the Vtu format all fields are saved if the user does not list them explicitely.
 End
 
+Solver 11
+  Exec Solver ="After TimeStep"
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "SurfaceIntegrals_"$name$".dat"
+  Operator 1 = boundary int
+  Variable 1 = height
+End
+
+Solver 12
+	Equation = "SaveLine"
+	Procedure = File "SaveData" "SaveLine"
+	Filename = "surfacedata_"$name$".dat"
+	File Append = Logical True
+End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! BODIES (i.e., domains to compute on)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -363,7 +390,7 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 Equation 1
- Active Solvers(6) = 1 2 3 7 8 10
+ Active Solvers(7) = 1 2 3 7 8 10 11 
  Convection = String "computed"
  Flow Solution Name = String "Flow Solution"
  NS Convect = False
@@ -503,7 +530,9 @@ Boundary Condition 3
   Pressure = Real 0.0
   ComputeNormal = Logical False
   !Flow Force BC = True
-  External Pressure = 0.0  
+  External Pressure = 0.0    
+  Save Scalars = Logical True
+  Save Line = Logical True
 End
 
 Boundary Condition 4

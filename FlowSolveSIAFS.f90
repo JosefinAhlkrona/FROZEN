@@ -121,8 +121,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
        PseudoPressureExists, PseudoCompressible, Bubbles, &
        Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
        MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate,  CouplApprox, &
-       OnlyHorizontalError, SIAasInitial, REALLOCATE_Josefin = .FALSE., TimeStuff, &
-       OldApproximation
+       OnlyHorizontalError, SIAasInitial, REALLOCATE_Josefin = .FALSE., TimeStuff=.FALSE., &
+       OldApproximation, ErrorStuff =.FALSE.
 
 
   REAL(KIND=dp),ALLOCATABLE :: MASS(:,:),STIFF(:,:), LoadVector(:,:), &
@@ -1996,7 +1996,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      close(134)  
   END IF
 
-  IF (CouplApprox) THEN
+  ErrorStuff = GetLogical( Solver % Values, 'Save Error Data', gotIt ) 
+
+  IF (CouplApprox .AND. ErrorStuff) THEN
      CALL SaveErrorMeasures(Model,Solver,dt,TransientSimulation, &
           SIAVelPermuted)
   END IF

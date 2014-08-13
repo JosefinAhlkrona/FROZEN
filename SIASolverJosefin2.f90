@@ -165,6 +165,13 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
   REAL(KIND=dp) :: CPUTime,RealTime
 
+  !---------------------------------------------------------------------------
+ LOGICAL :: ComputeSurface = .FALSE.
+TYPE(Variable_t), POINTER :: ThickSol 
+INTEGER, POINTER :: ThickPerm(:)
+ CHARACTER(LEN=MAX_NAME_LEN) :: ThickName
+ REAL(KIND=dp), POINTER :: Thick(:)
+
   !-----Needed for transient stuff etc.
 
   SAVE Material, ArrheniusFactor,  dArrheniusFactordT, A3hminusz3, &
@@ -221,6 +228,24 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   Timestep = NINT(Timevar % Values(1))
 
 
+ !------------------------------------------------------------------------------
+  !   Initialize the pointers to top and bottom nodes, needed for the integration 
+  !------------------------------------------------------------------------------
+  IF( .NOT. Initialized ) THEN
+
+     ! Choose active direction coordinate and set corresponding unit vector
+     !---------------------------------------------------------------------
+     PSolver => Solver
+     CALL DetectExtrudedStructure( Solver % Mesh, PSolver, Var, &
+          TopNodePointer = TopPointer, BotNodePointer = BotPointer, &
+          UpNodePointer = UpPointer, DownNodePointer = DownPointer )
+
+     Coord => Var % Values
+     nsize = SIZE( Coord )
+     Initialized = .TRUE.
+
+  END IF
+
   !------------------------------------------------------------------------------
   !    Get variables needed for solution
   !------------------------------------------------------------------------------
@@ -266,7 +291,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
   END IF
 
-
   BedrockData=GetLogical( Solver % Values, 'Bedrock Data', gotIt )
 
   IF ( BedrockData ) THEN
@@ -305,7 +329,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   IF  (ASSOCIATED(GradGrad1Sol)) THEN
      GradGradSurface1 => GradGrad1Sol % Values
      GradGradSurface1Perm => Grad1Sol % Perm
-     WRITE(*,*) 'fadsassssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss'
   ELSE
      CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad1 grad<')
   END IF
@@ -324,7 +347,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   END IF
 
   !......................
-
   FreeSurfSol => VariableGet( Solver % Mesh % Variables, 'FreeSurf' )
   IF (.NOT. ASSOCIATED(FreeSurfSol)) THEN
      FreeSurfSol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName))
@@ -335,6 +357,33 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   ELSE
      CALL FATAL(SolverName,'Could not find variable >FreeSurf<')
   END IF
+
+  ComputeSurface=GetLogical( Solver % Values, 'Compute Surface From Thickness', gotIt )
+
+  IF (ComputeSurface) THEN
+     WRITE(*,*) 'compute surface'
+     ThickName=GetString( Solver % Values, 'Thickness Name', gotIt )
+     ThickSol => VariableGet( Solver % Mesh % Variables, TRIM(ThickName))
+     IF (ASSOCIATED(ThickSol)) THEN
+        Thick => ThickSol % Values
+        ThickPerm => ThickSol % Perm
+     ELSE
+        CALL FATAL(SolverName,'Could not find thickness variable')
+     END IF
+
+     DO i = 1,Model % Mesh % NumberOfNodes
+        IF (DIM==2) THEN
+        FreeSurf(FreeSurfPerm(i))=Thick(ThickPerm(i))+ &
+             Model % Nodes % y(BotPointer(i))
+        ELSEIF (DIM==3) THEN
+        FreeSurf(FreeSurfPerm(i))=Thick(ThickPerm(i))+ &
+             Model % Nodes % z(BotPointer(i))
+        END IF
+     END DO
+
+  END IF
+
+
 
   VELO_LIMIT=GetConstReal( Solver % Values, 'Velocity Cutoff', FOUND_VELO_LIMIT)
 
@@ -355,10 +404,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   Material =>  Model % Materials(1) % Values
 
   ViscosityFlag = ListGetString( Model % Materials(1) % Values ,'Viscosity Model', GotIt) 
-
-  WRITE(*,*) 'ViscosityFlag=',ViscosityFlag
-  WRITE(*,*) 'GotIt=',GotIt
-
 
   SELECT CASE( ViscosityFlag )
 
@@ -412,33 +457,10 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
      END IF
   END SELECT
 
-
-  
-
   rho = GetConstReal(Model % Materials(1) % Values, "Density", Found)
 
   !  nGleninv = GetConstReal(Model % Materials(1) % Values, "Viscosity Exponent", Found)
   !  nGlen=1.0_dp/nGleninv
-
-
-  !------------------------------------------------------------------------------
-  !   Initialize the pointers to top and bottom nodes, needed for the integration 
-  !------------------------------------------------------------------------------
-  IF( .NOT. Initialized ) THEN
-
-     ! Choose active direction coordinate and set corresponding unit vector
-     !---------------------------------------------------------------------
-     PSolver => Solver
-     CALL DetectExtrudedStructure( Solver % Mesh, PSolver, Var, &
-          TopNodePointer = TopPointer, BotNodePointer = BotPointer, &
-          UpNodePointer = UpPointer, DownNodePointer = DownPointer )
-
-     Coord => Var % Values
-     nsize = SIZE( Coord )
-     Initialized = .TRUE.
-
-  END IF
-
 
   !--------------------------------------------------------------
   ! Compute SIA-solution
@@ -478,9 +500,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
         END IF
      END DO
 
-     WRITE(*,*) ' '
-
-     !------------------------------------------------------------------------------
+     !!------------------------------------------------------------------------------
      !   Integral of 2*dAdx*(rho*g)^3*(h-z)^3
      !------------------------------------------------------------------------------
 
@@ -812,11 +832,8 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   DO i=1,nsize
      IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
         l = i !start at the bottom of the line
-        !WRITE(*,*) 'i=', i
         intdvxdx(l) = 0.0_dp !Integral is zero at the bottom
         DO k=1,nsize
-           !WRITE(*,*) 'k=', k
-           ! Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
            IF (dim==2) THEN
               Surf =  Model % Nodes % y(TopPointer(l))
            ELSE
@@ -904,13 +921,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            vx= -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)
            vy= -intdvxdx(i)
 
-
-!  SurfGrad1 SurfGrad1Grad1 SurfGrad2 SurfGrad2Grad1 A3hminusz3(i) threeA3hminusz2(i) BedGrad1 ArrheniusFactor(i) Surf  dAdxhminusz3(i)
-
-       !    WRITE(*,*) 'vx=', vx
- !WRITE(*,*) 'uB1=',uB1,' SurfGrad1=', SurfGrad1, ' nGlen=',nGlen, ' A3hminusz3(i)=', A3hminusz3(i) 
-
-
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 1) = vx
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = dvxdx(i)!vy
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = SIApressure(i)
@@ -938,9 +948,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            uB2=0
            uB3=0
            IF (bottomindex .NE. 0) THEN  !sliding
-             ! IF( i == BotPointer(i) ) THEN !At bottom of ice
-!WRITE(*,*) '--------------------------------------------------'
-! WRITE(*,*) 'Node number ', i
 
                  j = BotPointer(i) !sliding is at bottom but added everywhere in the column
 
