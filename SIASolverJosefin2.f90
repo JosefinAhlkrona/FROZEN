@@ -798,11 +798,11 @@ INTEGER, POINTER :: ThickPerm(:)
         SurfGrad2Grad2=GradGradSurface2(DIM*(GradSurface2Perm(TopPointer(i))-1)+2)
         SurfGrad2Grad1=GradGradSurface2(DIM*(GradSurface2Perm(TopPointer(i))-1)+1)
         SurfGrad1Grad2=GradGradSurface1(DIM*(GradSurface1Perm(TopPointer(i))-1)+2)
-        BedGrad1=0.0_dp
+        BedGrad1=0.0_dp !why?
         BedGrad2=0.0_dp
-
+       
         ! Surf = FreeSurf(FreeSurfPerm(TopPointer(i)))
-        Surf =  Model % Nodes % z(TopPointer(l))
+        Surf =  Model % Nodes % z(TopPointer(i))
 
         dvxdx(i)=  -SurfGrad1*(2.0_dp*SurfGrad1*SurfGrad1Grad1 + 2.0_dp*SurfGrad2*SurfGrad2Grad1)**((nGlen-1.0)/2.0)*A3hminusz3(i) & 
              -SurfGrad1Grad1*SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)  &
@@ -979,7 +979,7 @@ INTEGER, POINTER :: ThickPerm(:)
 
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 1) = vx
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = vy
-           Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = vz!dArrheniusFactordT(i)!vz 
+           Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = vz
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 4) =  SIApressure(i)
    
         END IF
