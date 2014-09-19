@@ -175,21 +175,24 @@ CONTAINS
 
           CASE(4) !3D simulation
 
-             IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit .AND. &
-                  ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
-                NodeWiseError(k)=0.5*SQRT( (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
-                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))**2.0+ &
-                     (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
-                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))**2.0 )  
-             ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit) THEN
-                NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
-                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))
-             ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
-                NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
-                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))
-             ELSE
-                NodeWiseError(k)=0.0_dp
-             END IF
+             NodeWiseError(k)=0.5*SQRT( (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0 ) &
+                  /(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0+FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0))
+
+      !       IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit .AND. &
+      !            ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
+      !          NodeWiseError(k)=0.5*SQRT( (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
+      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))**2.0+ &
+      !               (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
+      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))**2.0 )  
+      !       ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit) THEN
+      !          NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
+      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))
+      !       ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
+      !          NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
+      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))
+      !       ELSE
+      !          NodeWiseError(k)=0.0_dp
+      !       END IF
 
              !Weighing absolute and relative error
              ErrorBound = MAXVAL((/ ErrorBoundAbs/SQRT(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 &
