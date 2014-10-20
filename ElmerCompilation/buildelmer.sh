@@ -57,8 +57,10 @@ cd trunk
    echo "#############################"
    cd $m
    pwd
-      make clean; ./configure   --with-64bits=yes --with-mpi=yes --with-hypre="-lHYPRE" --with-mumps="-I$MUMPS/include -L$MUMPS/lib -ldmumps_ptscotch -lmumps_common_ptscotch" --with-lapack="-L/usr/lib -llapack" --with-blas="-L/usr/lib -lblas" --prefix=$ELMER_INSTALL  
-	make -j4  && echo "Installing into $ELMER_INSTALL"; sudo make install
+      	./configure   --with-64bits=yes --with-mpi=yes --with-hypre="-lHYPRE" --with-mumps="-I$MUMPS/include -L$MUMPS/lib -ldmumps_ptscotch -lmumps_common_ptscotch" --with-lapack="-L/usr/lib -llapack" --with-blas="-L/usr/lib -lblas" --prefix=$ELMER_INSTALL  
+	make clean; 
+	make -j4  && echo "Installing into $ELMER_INSTALL"; 
+	sudo make install
    cd ..
 done
 
