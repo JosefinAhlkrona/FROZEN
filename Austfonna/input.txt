@@ -1,0 +1,25 @@
+&list_input
+
+!**** Rayon pour le lissage (moindre carré 2D quadratique des vitesses)
+R=1000.0,
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!-------  Yams Parameters ------------!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!**** hmin
+hmin=500.0,
+!**** hmax
+hmax=10000.0,
+!**** herr
+err=50.0,
+!**** Threshold.............. !if value of DEM >= threshold then the previous set of parameters is used
+threshold = 50,
+!**** hmin2
+hmin2=10000.0,
+!**** hmax2
+hmax2=60000.0,
+!**** herr
+err2=200.0,
+
+/
+
