@@ -17,8 +17,8 @@ program reduce_dem
 		  max_output_y, x_offset, y_offset
 
 
-	character(len=255), parameter :: output_dem = "reduced_dem.xyz", sif_parameter_file = "sif_parameters.txt"
-
+	character(len=255), parameter :: sif_parameter_file = "sif_parameters.txt"
+	character(len=255) :: output_dem
 	! first, read in the DEM. the DEM file is the first command line argument
 
 	call READ_DEM
@@ -32,6 +32,7 @@ program reduce_dem
 
 
 	call getarg(2,filename_contour)
+	call getarg(3,output_dem)
 
 	open(unit=30, file=filename_contour, access="sequential", form="formatted", status="old")
 
