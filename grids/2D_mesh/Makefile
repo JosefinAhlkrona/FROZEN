@@ -18,6 +18,9 @@ Routines = $(OBJDIR)/DEMVar.o $(OBJDIR)/Initialisation.o $(OBJDIR)/READ_DEM.o $(
 Routines2 = $(OBJDIR)/DEMVar.o  $(OBJDIR)/READ_DEM.o
 
 
+$(EXEDIR)/read_dem_austfonna: $(SRCDIR)/read_dem_austfonna.f90 $(OBJDIR)/DEMVar.o
+	$(F90) $(FFLAGS)  $^ -o $@ 
+
 $(EXEDIR)/Make2DMesh : $(SRCDIR)/Make2DMesh.f90 $(Routines) 
 	$(F90) $(FFLAGS)  $^ -o $@ $(LAPACK)
 
