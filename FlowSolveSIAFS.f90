@@ -47,7 +47,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   USE NavierStokesCylindrical
 
   USE Adaptive
-  USE DefUtilsJos
   USE DefUtils
   USE FreeSurface
 
