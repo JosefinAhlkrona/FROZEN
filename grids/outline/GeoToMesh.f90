@@ -64,7 +64,7 @@
 
        write(test,*)np+6
        write(uxCom,*) 'tail -n +',trim(adjustl(test)), &
-           ' Contour.mesh > tmp2.mesh'
+         ' ', trim(adjustl(outfile)), ' > tmp2.mesh'
 
        call system(uxCom)
 

@@ -48,7 +48,7 @@ export CXXFLAGS="$CXXFLAGS -DHAVE_TRILINOS -DOLD_TRILINOS -I/usr/include/trilino
 export FCPPFLAGS="$FCPPFLAGS -DHAVE_TRILINOS"
 export LDFLAGS="$LDFLAGS -L/usr/lib -ltrilinos_belostpetra -ltrilinos_belosepetra -ltrilinos_belos -ltrilinos_ml -ltrilinos_ifpack -ltrilinos_amesos -ltrilinos_galeri -ltrilinos_isorropia -ltrilinos_epetraext -ltrilinos_tpetrainout -ltrilinos_tpetra -ltrilinos_triutils -ltrilinos_zoltan -ltrilinos_epetra -ltrilinos_kokkoslinalg -ltrilinos_kokkosnodeapi -ltrilinos_kokkos -ltrilinos_teuchos"
 
-modules="matc umfpack mathlibs meshgen2d eio hutiter fem"
+modules="matc umfpack mathlibs meshgen2d eio hutiter elmergrid fem"
 
 cd trunk
 ##### configure, build and install #########
@@ -56,9 +56,9 @@ cd trunk
    echo "compiling module $m"
    echo "#############################"
    cd $m
-   pwd
+   pwd	
+        make clean; 
       	./configure   --with-64bits=yes --with-mpi=yes --with-hypre="-lHYPRE" --with-mumps="-I$MUMPS/include -L$MUMPS/lib -ldmumps_ptscotch -lmumps_common_ptscotch" --with-lapack="-L/usr/lib -llapack" --with-blas="-L/usr/lib -lblas" --prefix=$ELMER_INSTALL  
-	make clean; 
 	make -j4  && echo "Installing into $ELMER_INSTALL"; 
 	sudo make install
    cd ..
