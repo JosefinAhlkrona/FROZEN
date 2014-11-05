@@ -47,6 +47,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   USE NavierStokesCylindrical
 
   USE Adaptive
+  USE DefUtilsJos
   USE DefUtils
   USE FreeSurface
 
@@ -617,7 +618,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      IF (CouplApprox .OR. SIAasInitial) THEN
         !Original number of rows in A
         OrigNOFRows=SIZE(FlowSolution)
-        
+
         ! Getting the inverse permutation 
         WRITE( Message, * ) 'Computing inverse bandwidth-optimization permutation' 
         CALL Info( 'FlowSolve',Message, Level=4 )
@@ -648,16 +649,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         CALL Fatal( 'FlowSolve','SIA-solution not available, Aborting.' )
      END IF
 
- WRITE(*,*) 'OrigNOFRows=', OrigNOFRows
-     !Loop over rows in matrix
-        SIAVelPermuted=0
-
-     DO i=1,OrigNOFRows/NSDOFs
-        !While i'm at it, I'll reorder SIAVel so it has the same permuation as Flowsolution
-        DO k_i=1,NSDOFs
-           SIAVelPermuted(NSDOFs*(i-1)+k_i)=SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i);
-        END DO
-     END DO
   END IF !CouplApprox .or. (siaasinital and timestep==1)
 
   IF (Timestep==1 .AND. CouplApprox) THEN !Sort nodes from input data
@@ -807,24 +798,20 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      Norm=2.0
   END IF
 
-  IF (SIAasInitial .AND. Timestep ==1) THEN
-
-     DO i = 1, SIZE(FlowSolution)/NSDOFs
-        DO k_i=1,NSDOFs
-           FlowSolution(NSDOFs*(i-1)+k_i)=SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i);
-        END DO
-     END DO
-
-  END IF !siaasinital and timestep ==1
-
-  numberofiter=0
 
   IF (GetNOFActive() .EQ. 0) THEN
+     ActiveInThisTimeStep=0
+
      IF (DoErrorEstimation) THEN
-        ActiveInThisTimeStep=GetNOFActive()
         DoingErrorEstimation=.TRUE.
         DoErrorEstimation=.FALSE.
      END IF
+
+     WRITE( Message, * ) 'Setting SIA as initial condition'
+     CALL Info( 'FlowSolve', Message, Level=4 )
+
+     SIAasInitial = .TRUE.
+
      !Message about error estimation
      WRITE( Message, * ) 'ESTIMATING ERROR'
      CALL Info( 'FlowSolve', Message, Level=4 )
@@ -842,7 +829,22 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      CALL Info( 'FlowSolve', Message, Level=4 )
   END IF
 
-  DO iter=1,NonlinearIter   !Begin Nonlinear iterations-----------------------------------------------------------------
+
+
+  IF (SIAasInitial .AND. Timestep ==1) THEN
+
+     DO i = 1, SIZE(FlowSolution)/NSDOFs
+        DO k_i=1,NSDOFs
+           FlowSolution(NSDOFs*(i-1)+k_i)=SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i);
+        END DO
+        SIAVelPermuted = FlowSolution
+     END DO
+
+  END IF !siaasinital and timestep ==1
+
+  numberofiter=0
+
+  DO iter=1,NonlinearIter   !Begin Nonlinear iterations
 
      gluetime=0
 
@@ -850,19 +852,12 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         numberofiter=numberofiter+1
      END IF
 
-
-
-
      IF (PseudoPressureExists .AND. PseudoPressureUpdate) &
           PseudoPressure = FlowSolution(NSDOFs:SIZE(FlowSolution):NSDOFs)
 
      at  = CPUTime()
      at0 = RealTime()
      at1 = RealTime()
-
-!******
-     WRITE(*,*) 'NOFAssembleElements=', GetNOFActive()
-     IF (GetNOFActive() .NE. 0) THEN
 
      CALL Info( 'FlowSolve', ' ', Level=4 )
      CALL Info( 'FlowSolve', ' ', Level=4 )
@@ -874,7 +869,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      CALL Info( 'FlowSolve','Starting Assembly...', Level=4 )
 
      !------------------------------------------------------------------------------
-     CALL InitializeToZero( A, ForceVector )
+     CALL InitializeToZero( A, ForceVector ) !valgrind complains
      !------------------------------------------------------------------------------
 
      bf_id   = -1
@@ -1587,18 +1582,20 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
               END IF
            END DO
 
+
            WRITE( Message, * ) 'Allocating A_FS and A_Coupling' 
            CALL Info( 'FlowSolve',Message, Level=4 )
            !---------Allocate A_FS--------------------------------------------------------------------
+
            ! Allocate, splitted matrices. Some copy paste from CRScreateMatrix. 
            A_FS => AllocateMatrix()
            A_FS % Format = MATRIX_LIST
-           
+
            ALLOCATE(A_FS % RHS(NSDOFs*AFSrow)); A_FS % RHS=0._dp
 
            WRITE( Message, * ) 'Allocating A_Coupling' 
            CALL Info( 'FlowSolve',Message, Level=4 )
-           !---------Allocate A_Coupling, needed to transer information from the SIA to FS area-----------------------------------------------
+           !---------Allocate A_Coupling, needed to transfer information from the SIA to FS area-----------------------------------------------
 
            A_Coupling => AllocateMatrix()
            A_Coupling % Format = MATRIX_LIST
@@ -1607,11 +1604,13 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
 
         A => BigMatrix
-
         !----------Fill in matrix A_FS and A_Coupling
         WRITE( Message, * ) 'Filling in A_FS and A_Coupling' 
         CALL Info( 'FlowSolve',Message, Level=4 )
-  
+
+
+
+        SIAVelPermuted=0.0
         k_i=0
         k_j=0
         k_jos=1
@@ -1620,18 +1619,27 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         ASIArow=0
         AFScol=0
         FSPerm=0
+
         DO i=1,A % NumberOfRows/NSDOFs !Loop over u,v,p blocks in matrix
+
+!While i'm at it, I'll reorder SIAVel so it has the same permuation as Flowsolution
+        DO k_i=1,NSDOFs
+           SIAVelPermuted(NSDOFs*(i-1)+k_i)=SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i);
+        END DO
 
            IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 2) THEN !Full Stokes row
               !Counter for FS blocks
               AFSrow = AFSrow + 1
               FSPerm(ProperNodes(InvPerm(i)))=AFSrow
+
+
               DO k_i=1,NSDOFs
                  i_jos=NSDOFs*(i-1)+k_i  !Row in big matrix
                  A_FS % RHS(NSDOFs*(AFSrow-1)+k_i) = A % RHS(i_jos)
                  !Loop over columns
 
                  DO j_jos=A % Rows(i_jos),A % Rows(i_jos+1)-1 !loop over columns in row in big matrice
+
                     j=(A % Cols(j_jos)-1)/NSDOFs+1  !Blocknumber of big matrice (divide into u,v,p blocks by integer division)
                     IF (NodeType2(ProperNodes(InvPerm(j))) == 2)  THEN !A_FS
 
@@ -1641,6 +1649,12 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
                        CALL SetMatrixElement(A_FS,NSDOFs*(AFSrow-1)+k_i, &
                             NSDOFs*(BlockOrderAllToSplit(j)-1)+k_j, A % Values(j_jos))
                     ELSE IF (NodeType2(ProperNodes(InvPerm(j))) .EQ. 1)  THEN ! Coupling from SIA to FS
+
+!IF ( SIZE(A_Coupling % Cols) .NE. SIZE(A_Coupling % Values) ) THEN
+!WRITE(*,*) 'i,j=', i_jos,j_jos
+!WRITE(*,*) 'SIZE A_Coupling=', SIZE(A_Coupling % Cols), SIZE(A_Coupling % Values)
+!END IF
+
                        !Add to A_coupling
                        CALL SetMatrixElement(A_Coupling,i_jos, &
                             A % Cols(j_jos), A % Values(j_jos))
@@ -1650,6 +1664,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
               END DO
 
            ELSE !SIA-row
+
               ASIArow = ASIArow + 1
 
            END IF
@@ -1659,16 +1674,19 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            CALL AddToMatrixElement(A_Coupling,i,i,0._dp) !fill in diagonal
         END DO
 
+WRITE(*,*) 'hey babe'
+WRITE(*,*) 'SIZE A_Coupling=', SIZE(A_Coupling % Cols), SIZE(A_Coupling % Values)
+
 
         IF(Iter==1 .AND. REALLOCATE_Josefin) THEN
            CALL List_toCRSMatrix(A_Coupling)
-           CALL List_toCRSMatrix(A_FS)
+           CALL List_toCRSMatrix(A_FS)        !valgrind complains when sliding
            ALLOCATE(A_Coupling  %  RHS(A_Coupling % NumberOfRows)); &
                 A_Coupling % RHS=0._dp
            xx => Solver % Variable % Values
-           ALLOCATE(yy(size(xx)));yy=0
+           ALLOCATE(yy(size(xx)))
+           yy=0.0
         END IF
-
 
         !     
         !Setting SIA solution as a dirichlet condition for the FS-area.
@@ -1689,6 +1707,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
         ELSE ! serial run
            CALL CRS_MatrixVectorMultiply(A_Coupling,SIAVelPermuted,yy)
+           WRITE(*,*) MAXVAL(yy)
+           WRITE(*,*) MAXVAL(SIAVelPermuted)
+           WRITE(*,*) MAXVAL(A_Coupling % Values)
         END IF
 
         !Including the coupling vector in the RHS of A_FS
@@ -1707,8 +1728,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
      END IF !Coupling approx .AND. .NOT. DoingErrorEstimation
 
-END IF !NOFAssembleElements=0
-!**
      !------------------------------------------------------------------------------
      !     Solve the system and check for convergence
      !------------------------------------------------------------------------------
@@ -1716,12 +1735,8 @@ END IF !NOFAssembleElements=0
      st = CPUTime()
      IF ( NonlinearRelax /= 1.0d0 ) PSolution = FlowSolution
 
-!**
+     !**
      IF (CouplApprox .AND. .NOT. DoingErrorEstimation) THEN 
-
-IF (GetNOFActive() .NE. 0) THEN
-WRITE(*,*) 'doign error estimation? ', DoingErrorEstimation
-
 
         WRITE( Message, * ) 'Processor no ', ParEnv % MyPE, ' says: Solving small FS-system' 
         CALL Info( 'FlowSolve',Message, Level=4 )
@@ -1761,15 +1776,12 @@ WRITE(*,*) 'doign error estimation? ', DoingErrorEstimation
 
         Solver % Variable  % Values=0._dp
 
-        nrm = DefaultSolve() 
+        nrm = DefaultSolve() !Valgrind complains unless back rotatesystem = false when sliding
 
         Solver % Matrix => ss
         A => Solver % Matrix
         Solver % Variable % Perm => pp
         Solver % Variable % Values => xx 
-
-END IF !NOFAssembleElements = 0
-!***
 
         !Glue solution together with SIA-solution
         WRITE( Message, * ) 'Glue FS-solution and SIA-solution together' 
@@ -1794,23 +1806,19 @@ END IF !NOFAssembleElements = 0
 
      ELSE IF (.NOT. CouplApprox) THEN
         UNorm = DefaultSolve() !UNorm
-        WRITE(*,*) 'UNorm is ', UNorm
      ELSE IF (DoingErrorEstimation) THEN 
 
-          ! CoupledSolution=FlowSolution !redundant? dont wanna overwrite the coupled solution
-        WRITE(*,*) 'hej'
+         CoupledSolution=FlowSolution !redundant? dont wanna overwrite the coupled solution
 
         SELECT CASE(ErrorEstimationMethod)
         CASE('solution') 
            !Solve large system
            CALL ParallelInitMatrix(Solver,Solver % Matrix)
-           UNorm = DefaultSolve() !UNorm
-           WRITE(*,*) 'UNorm is ', UNorm
+           UNorm = DefaultSolve() 
         END SELECT
 
      END IF !CouplApprox .AND. .NOT. DoingErrorEsimation
 
-     WRITE(*,*) 'nrm=', nrm, ' och UNorm=', UNorm
      st = CPUTIme()-st
      totat = totat + at
      totst = totst + st
@@ -1848,50 +1856,35 @@ END IF !NOFAssembleElements = 0
 
      !NORM COMPUATION
      IF (.NOT. DoingErrorEstimation) THEN
-        !IF (CouplApprox) THEN 
-        !Compute norm of solution
+       
         PrevNorm = Norm
-        WRITE(*,*) 'tjojo'
-        Norm = Solver % Variable % Norm! ParallelReduction(SQRT(SUM(FlowSolution**2)))
-        WRITE( Message, * ) 'Norm is',Norm 
-        CALL Info( 'FlowSolve',Message, Level=4 )
-        WRITE( Message, * ) 'Norm previous iteration is',PrevNorm 
-        CALL Info( 'FlowSolve',Message, Level=4 )
-
+        Norm = Solver % Variable % Norm! 
+       
         IF (PrevNorm+Norm /= 0.0d0) THEN
            RelativeChange= 2.0d0 * ABS(PrevNorm-Norm) / (PrevNorm + Norm)
         ELSE
            RelativeChange= 0.0d0
         END IF
-        !ELSE
-        !  RelativeChange = Solver % Variable % NonlinChange
-        !END IF
+   
      END IF
 
-     WRITE(*,*) 'hoho'
      !------------------------------------------------------------------------------
 
      WRITE( Message, * ) 'Result Norm     : ',Solver % Variable % Norm
      CALL Info( 'FlowSolve', Message, Level=4 )
-
-     WRITE( Message, * ) 'Result Norm other comp     : ', nrm 
-     CALL Info( 'FlowSolve', Message, Level=4 )
+  
      WRITE( Message, * ) 'Relative Change : ',RelativeChange
      CALL Info( 'FlowSolve', Message, Level=4 )
 
      IF ( RelativeChange < NewtonTol .OR. &
           iter > NewtonIter ) NewtonLinearization = .TRUE.
 
-     !Breaking free
-     !IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter .OR. DoingErrorEstimation) THEN
      IF ( RelativeChange < NonLinearTol .OR. iter==NonlinearIter .OR. DoingErrorEstimation) THEN
 
         IF (.NOT. DoErrorEstimation) THEN !will happen if DoingErrorEstimation 
            EXIT
         ELSE IF (DoErrorEstimation) THEN
-           ! IF (Iter==NonlinearIter) THEN
-           !   iter=iter-1
-           ! END IF
+
            DoErrorEstimation=.FALSE. !don't go on forever
            DoingErrorEstimation=.TRUE. !start doing the estimation
            !Message about error estimation
@@ -1963,21 +1956,24 @@ END IF !NOFAssembleElements = 0
         CASE ('solution')
            CALL SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
+           FlowSolution=CoupledSolution
         CASE ('functional')
            CALL FunctionalErrorEstimate( Model,Solver,dt,TransientSimulation, &
                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
         END SELECT
 
         !deallocate stuff you used
-           DEALLOCATE(x_FS,STAT=istat)
+        DEALLOCATE(x_FS,STAT=istat)
         IF(ActiveInThisTimeStep.NE.0) THEN
 
-           IF (AFSrow >0) THEN
+WRITE(*,*) 'hey im here'
+
+       !    IF (AFSrow >0) THEN
               DEALLOCATE(A_FS % Rows)
               DEALLOCATE(A_FS % Values)
               DEALLOCATE(A_FS % Cols)
               DEALLOCATE(A_FS)
-           END IF
+        !   END IF
 
            DEALLOCATE(A_Coupling % Rows)
            DEALLOCATE(A_Coupling % Values)
@@ -2046,10 +2042,10 @@ END IF !NOFAssembleElements = 0
 
   ErrorStuff = GetLogical( Solver % Values, 'Save Error Data', gotIt ) 
 
-  IF (CouplApprox .AND. ErrorStuff) THEN
-     CALL SaveErrorMeasures(Model,Solver,dt,TransientSimulation, &
-          SIAVelPermuted)
-  END IF
+ ! IF (CouplApprox .AND. ErrorStuff) THEN
+ !    CALL SaveErrorMeasures(Model,Solver,dt,TransientSimulation, &
+ !         SIAVelPermuted)
+ ! END IF
 
 CONTAINS
   !------------------------------------------------------------------------------
