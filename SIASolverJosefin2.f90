@@ -122,7 +122,8 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
   REAL(KIND=dp) :: Norm, SurfGrad1,SurfGrad2, Surf,Gravity(3), &
        Integral,SurfGrad1Grad1,SurfGrad2Grad1,BedGrad1, BedGrad2, &
-       SurfGrad1Grad2,SurfGrad2Grad2, Viscosity, n_powerlaw, Slip1, Slip2
+       SurfGrad1Grad2,SurfGrad2Grad2, Viscosity, n_powerlaw, Slip1, Slip2, &
+       Position, PositionUnder
 
   REAL(KIND=dp), ALLOCATABLE :: SIAxVelocity(:), SIAyVelocity(:), SIApressure(:), &
        A3hminusz3(:),dvxdx(:),dvydy(:),threeA3hminusz2(:),intdvxdx(:)
@@ -166,11 +167,11 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: CPUTime,RealTime
 
   !---------------------------------------------------------------------------
- LOGICAL :: ComputeSurface = .FALSE.
-TYPE(Variable_t), POINTER :: ThickSol 
-INTEGER, POINTER :: ThickPerm(:)
- CHARACTER(LEN=MAX_NAME_LEN) :: ThickName
- REAL(KIND=dp), POINTER :: Thick(:)
+  LOGICAL :: ComputeSurface = .FALSE.
+  TYPE(Variable_t), POINTER :: ThickSol 
+  INTEGER, POINTER :: ThickPerm(:)
+  CHARACTER(LEN=MAX_NAME_LEN) :: ThickName
+  REAL(KIND=dp), POINTER :: Thick(:)
 
   !-----Needed for transient stuff etc.
 
@@ -228,7 +229,7 @@ INTEGER, POINTER :: ThickPerm(:)
   Timestep = NINT(Timevar % Values(1))
 
 
- !------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
   !   Initialize the pointers to top and bottom nodes, needed for the integration 
   !------------------------------------------------------------------------------
   IF( .NOT. Initialized ) THEN
@@ -250,47 +251,75 @@ INTEGER, POINTER :: ThickPerm(:)
   !    Get variables needed for solution
   !------------------------------------------------------------------------------
   DIM = CoordinateSystemDimension()
-  VeloSol => VariableGet( Solver % Mesh % Variables, 'SIAFlow' )
+  VeloSol => VariableGet( Solver % Mesh % Variables, 'SIAFlow2' )
   IF (ASSOCIATED(veloSol)) THEN
      Velocity => VeloSol % Values
      VeloPerm => VeloSol % Perm
      PrevVelo => VeloSol % PrevValues
   ELSE
-     CALL FATAL(SolverName,'Could not find variable >SIAFlow<')
+     CALL FATAL(SolverName,'Could not find variable >SIAFlow2<')
   END IF
 
 
-  !Geometry stuff.......
-  Grad1Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad1')  
-  IF (.NOT. ASSOCIATED(Grad1Sol)) THEN
-     SurfaceName=GetString( Solver % Values, 'Surface Name', gotIt )
-     Grad1Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 1')
+  !Get name of surface
+  SurfaceName=GetString( Solver % Values, 'Surface Name', gotIt )
+
+
+  !get free surface
+  FreeSurfSol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName))
+
+  IF (ASSOCIATED(FreeSurfSol)) THEN
+     FreeSurf => FreeSurfSol % Values
+     FreeSurfPerm => FreeSurfSol % Perm
+  ELSE
+     CALL FATAL(SolverName,'Could not find variable >'//TRIM(SurfaceNAme)//'<')
   END IF
+
+  !get free surface gradient
+
+  Grad1Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 1')
+
   IF  (ASSOCIATED(Grad1Sol)) THEN
      GradSurface1 => Grad1Sol % Values
      GradSurface1Perm => Grad1Sol % Perm
   ELSE
-     CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad1<')
+     CALL FATAL(SolverName,'Could not find a variable >'//TRIM(SurfaceNAme)//' grad 1<')
   END IF
-
-
 
   IF (dim > 2) THEN
 
-     Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad2')  
-     IF (.NOT. ASSOCIATED(Grad2Sol)) THEN
-        SurfaceName=GetString( Solver % Values, 'Surface Name', gotIt )
-        Grad2Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 2')
-     END IF
+     Grad2Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 2')
+
      IF  (ASSOCIATED(Grad2Sol)) THEN
         GradSurface2 => Grad2Sol % Values
         GradSurface2Perm => Grad2Sol % Perm
      ELSE
-        CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad2<')
+        CALL FATAL(SolverName,'Could not find a variable >'//TRIM(SurfaceNAme)//' grad 2<')
      END IF
 
   END IF
 
+  !get second derivatives of surface
+
+  GradGrad1Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 1 grad')
+  IF  (ASSOCIATED(GradGrad1Sol)) THEN
+     GradGradSurface1 => GradGrad1Sol % Values
+     GradGradSurface1Perm => Grad1Sol % Perm
+  ELSE
+     CALL FATAL(SolverName,'Could not find a variable >'//TRIM(SurfaceName)//' grad 1 grad<')
+  END IF
+
+  IF (dim > 2) THEN
+     GradGrad2Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 2 grad')
+     IF  (ASSOCIATED(GradGrad2Sol)) THEN
+        GradGradSurface2 => GradGrad2Sol % Values
+        GradGradSurface2Perm => Grad2Sol % Perm
+     ELSE
+        CALL FATAL(SolverName,'Could not find a variable >'//TRIM(SurfaceName)//' grad 2 grad<')
+     END IF
+  END IF
+
+!get bedrock and bedrock gradients
   BedrockData=GetLogical( Solver % Values, 'Bedrock Data', gotIt )
 
   IF ( BedrockData ) THEN
@@ -303,7 +332,7 @@ INTEGER, POINTER :: ThickPerm(:)
         GradBed1 => BGrad1Sol % Values
         GradBed1Perm => BGrad1Sol % Perm
      ELSE
-        CALL FATAL(SolverName,'Could not find variable >FreeBedGrad1<')
+        CALL FATAL(SolverName,'Could not find variable >'//TRIM(BedrockName)//' grad 1<')
      END IF
 
      IF (dim > 2) THEN
@@ -315,48 +344,15 @@ INTEGER, POINTER :: ThickPerm(:)
            GradBed2 => BGrad2Sol % Values
            GradBed2Perm => BGrad2Sol % Perm
         ELSE
-           CALL FATAL(SolverName,'Could not find variable >FreeBedGrad2<')
+           CALL FATAL(SolverName,'Could not find variable >'//TRIM(BedrockName)//' grad 2<')
         END IF
      END IF
   ELSE
-     WRITE(*,*) 'Bedrock data is zero'
+      WRITE( Message, * ) 'Bedrock data zero'
+     CALL Info('FlowSolve',Message,Level=4)
   END IF
 
-  GradGrad1Sol => VariableGet( Solver % Mesh % Variables, 'Freesurfgrad1 grad')
-  IF (.NOT. ASSOCIATED(GradGrad1Sol)) THEN
-     GradGrad1Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 1 grad')
-  END IF
-  IF  (ASSOCIATED(GradGrad1Sol)) THEN
-     GradGradSurface1 => GradGrad1Sol % Values
-     GradGradSurface1Perm => Grad1Sol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad1 grad<')
-  END IF
 
-  IF (dim > 2) THEN
-     GradGrad2Sol => VariableGet( Solver % Mesh % Variables, 'Freesurfgrad2 grad')
-     IF (.NOT. ASSOCIATED(GradGrad2Sol)) THEN
-        GradGrad2Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 2 grad')
-     END IF
-     IF  (ASSOCIATED(GradGrad2Sol)) THEN
-        GradGradSurface2 => GradGrad2Sol % Values
-        GradGradSurface2Perm => Grad2Sol % Perm
-     ELSE
-        CALL FATAL(SolverName,'Could not find a variable >FreeSurfGrad2 grad<')
-     END IF
-  END IF
-
-  !......................
-  FreeSurfSol => VariableGet( Solver % Mesh % Variables, 'FreeSurf' )
-  IF (.NOT. ASSOCIATED(FreeSurfSol)) THEN
-     FreeSurfSol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName))
-  END IF
-  IF (ASSOCIATED(FreeSurfSol)) THEN
-     FreeSurf => FreeSurfSol % Values
-     FreeSurfPerm => FreeSurfSol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >FreeSurf<')
-  END IF
 
   ComputeSurface=GetLogical( Solver % Values, 'Compute Surface From Thickness', gotIt )
 
@@ -373,11 +369,11 @@ INTEGER, POINTER :: ThickPerm(:)
 
      DO i = 1,Model % Mesh % NumberOfNodes
         IF (DIM==2) THEN
-        FreeSurf(FreeSurfPerm(i))=Thick(ThickPerm(i))+ &
-             Model % Nodes % y(BotPointer(i))
+           FreeSurf(FreeSurfPerm(i))=Thick(ThickPerm(i))+ &
+                Model % Nodes % y(BotPointer(i))
         ELSEIF (DIM==3) THEN
-        FreeSurf(FreeSurfPerm(i))=Thick(ThickPerm(i))+ &
-             Model % Nodes % z(BotPointer(i))
+           FreeSurf(FreeSurfPerm(i))=Thick(ThickPerm(i))+ &
+                Model % Nodes % z(BotPointer(i))
         END IF
      END DO
 
@@ -466,235 +462,152 @@ INTEGER, POINTER :: ThickPerm(:)
   ! Compute SIA-solution
   !--------------------------------------------------------------
 
-  IF (dim == 2) THEN
 
-     !------------------------------------------------------------------------------
-     !   Integral of 2A*(rho*g)^3*(h-z)^3
-     !------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
+  !   Integral of 2A*(rho*g)^n*(h-z)^n
+  !------------------------------------------------------------------------------
+
+  !Integration from bottom to z-level, trapezoidal method
+  DO i=1,nsize
+     IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
+        l = i !start at the bottom of the line
+        A3hminusz3(l) = 0.0_dp !Integral is zero at the bottom
+        DO k=1,nsize
+
+           !              Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
+           IF (dim == 2) THEN
+              Surf= Model % Nodes % y(TopPointer(l))
+              Position =  Model % Nodes % y(l)
+              PositionUnder=Model % Nodes % y(DownPointer(l))
+           ELSEIF (dim ==3) THEN
+              Surf= Model % Nodes % z(TopPointer(l))
+              Position = Model % Nodes % z(l)
+              PositionUnder= Model % Nodes % z(DownPointer(l))
+           END IF
+
+           IF( k > 1 ) THEN !above bottom
+
+              dx = (Coord(l) - Coord(DownPointer(l)))
+
+              A3hminusz3(l)=A3hminusz3(DownPointer(l))+0.5_dp*dx*( &
+                   2*ArrheniusFactor(l)*(rho*g)**nGlen*& 
+                   (Surf - Position)**nGlen + &
+                   2*ArrheniusFactor(DownPointer(l))*(rho*g)**nGlen*&
+                   (Surf - PositionUnder)**nGlen)
+           END IF
+
+           IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
+           l = UpPointer(l)   !step up    
+
+        END DO
+     END IF
+  END DO
+
+
+  !!------------------------------------------------------------------------------
+  !   Integral of 2*dAdx*(rho*g)^3*(h-z)^3
+  !------------------------------------------------------------------------------
+
+
+  IF (.NOT. ConstTemp) THEN
 
      !Integration from bottom to z-level, trapezoidal method
      DO i=1,nsize
         IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
            l = i !start at the bottom of the line
-           A3hminusz3(l) = 0.0_dp !Integral is zero at the bottom
+           dAdxhminusz3(l) = 0.0_dp !Integral is zero at the bottom
            DO k=1,nsize
 
-              !              Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
-              Surf= Model % Nodes % y(TopPointer(i))
-
-              IF( k > 1 ) THEN !above bottom
-
-                 dx = (Coord(l) - Coord(DownPointer(l)))
-                 A3hminusz3(l)=A3hminusz3(DownPointer(l))+0.5_dp*dx*( &
-                      2*ArrheniusFactor(l)*(rho*g)**nGlen*& 
-                      (Surf - Model % Nodes % y(l))**nGlen + &
-                      2*ArrheniusFactor(DownPointer(l))*(rho*g)**nGlen*&
-                      (Surf - Model % Nodes % y(DownPointer(l)))**nGlen)
+              IF (dim == 2) THEN
+                 Surf= Model % Nodes % y(TopPointer(l))
+                 Position =  Model % Nodes % y(l)
+                 PositionUnder=Model % Nodes % y(DownPointer(l))
+              ELSEIF (dim ==3) THEN
+                 Surf= Model % Nodes % z(TopPointer(l))
+                 Position = Model % Nodes % z(l)
+                 PositionUnder= Model % Nodes % z(DownPointer(l))
               END IF
 
-              !SIAxVelocity(l) = Integral
+              IF( k > 1 ) THEN !above bottom
+                 dx = (Coord(l) - Coord(DownPointer(l)))
+                 dAdxhminusz3(l)=dAdxhminusz3(DownPointer(l))+0.5_dp*dx*( &
+                      2*dArrheniusFactordT(l)*TempGrad1(TempGrad1Perm(l))*(rho*g)**nGlen*& 
+                      (Surf - Position)**nGlen + &
+                      2*dArrheniusFactordT(DownPointer(l))*TempGrad1(TempGrad1Perm(DownPointer(l)))*(rho*g)**nGlen*&
+                      (Surf - PositionUnder)**nGlen)
+              END IF
+
               IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
               l = UpPointer(l)   !step up    
 
            END DO
         END IF
      END DO
+  ELSE
+     dAdxhminusz3 = 0.0_dp 
+  END IF
 
-     !!------------------------------------------------------------------------------
-     !   Integral of 2*dAdx*(rho*g)^3*(h-z)^3
-     !------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
+  !   integral of 3*2A*(rho*g)^3*(h-z)^2
+  !------------------------------------------------------------------------------
 
+  !Integration from bottom to z-level, trapezoidal method
+  DO i=1,nsize
+     IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
+        l = i !start at the bottom of the line
+        threeA3hminusz2(l) = 0.0_dp !Integral is zero at the bottom
+        DO k=1,nsize
 
-     IF (.NOT. ConstTemp) THEN
-
-        !Integration from bottom to z-level, trapezoidal method
-        DO i=1,nsize
-           IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
-              l = i !start at the bottom of the line
-              dAdxhminusz3(l) = 0.0_dp !Integral is zero at the bottom
-              DO k=1,nsize
-
-                 !Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
-                 Surf = Model % Nodes % y(TopPointer(i))
-
-                 IF( k > 1 ) THEN !above bottom
-                    dx = (Coord(l) - Coord(DownPointer(l)))
-                    dAdxhminusz3(l)=dAdxhminusz3(DownPointer(l))+0.5_dp*dx*( &
-                         2*dArrheniusFactordT(l)*TempGrad1(TempGrad1Perm(l))*(rho*g)**nGlen*& 
-                         (Surf - Model % Nodes % y(l))**nGlen + &
-                         2*dArrheniusFactordT(DownPointer(l))*TempGrad1(TempGrad1Perm(DownPointer(l)))*(rho*g)**nGlen*&
-                         (Surf - Model % Nodes % y(DownPointer(l)))**nGlen)
-                 END IF
-
-                 IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
-                 l = UpPointer(l)   !step up    
-
-              END DO
+           !Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
+           IF (dim == 2) THEN
+              Surf= Model % Nodes % y(TopPointer(l))
+              Position =  Model % Nodes % y(l)
+              PositionUnder=Model % Nodes % y(DownPointer(l))
+           ELSEIF (dim ==3) THEN
+              Surf= Model % Nodes % z(TopPointer(l))
+              Position = Model % Nodes % z(l)
+              PositionUnder= Model % Nodes % z(DownPointer(l))
            END IF
+
+           IF( k > 1 ) THEN !above bottom
+              dx = (Coord(l) - Coord(DownPointer(l)))
+              threeA3hminusz2(l)=threeA3hminusz2(DownPointer(l))+3.0_dp*0.5_dp*dx*( &
+                   2*ArrheniusFactor(l)*(rho*g)**nGlen*& 
+                   (Surf - Position)**(nGlen-1) + &
+                   2*ArrheniusFactor(DownPointer(l))*(rho*g)**nGlen*&
+                   (Surf - PositionUnder)**(nGlen-1))
+           END IF
+
+           !SIAxVelocity(l) = Integral
+           IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
+           l = UpPointer(l)   !step up    
+
         END DO
-     ELSE
-        dAdxhminusz3 = 0.0_dp 
+     END IF
+  END DO
+
+
+  !------------------------------------------------------------------------------
+  !   Pressure
+  !------------------------------------------------------------------------------
+
+  SIApressure = 0.0_dp 
+  DO i=1,nsize
+
+     IF (dim == 2) THEN
+        Surf= Model % Nodes % y(TopPointer(i))
+        Position =  Model % Nodes % y(i)
+     ELSEIF (dim ==3) THEN
+        Surf= Model % Nodes % z(TopPointer(i))
+        Position = Model % Nodes % z(i)
      END IF
 
-     !------------------------------------------------------------------------------
-     !   integral of 3*2A*(rho*g)^3*(h-z)^2
-     !------------------------------------------------------------------------------
-
-     !Integration from bottom to z-level, trapezoidal method
-     DO i=1,nsize
-        IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
-           l = i !start at the bottom of the line
-           threeA3hminusz2(l) = 0.0_dp !Integral is zero at the bottom
-           DO k=1,nsize
-
-              !Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
-              Surf =  Model % Nodes % y(TopPointer(l))
-
-           
-              IF( k > 1 ) THEN !above bottom
-                 dx = (Coord(l) - Coord(DownPointer(l)))
-                 threeA3hminusz2(l)=threeA3hminusz2(DownPointer(l))+3.0_dp*0.5_dp*dx*( &
-                      2*ArrheniusFactor(l)*(rho*g)**nGlen*& 
-                      (Surf - Model % Nodes % y(l))**(nGlen-1) + &
-                      2*ArrheniusFactor(DownPointer(l))*(rho*g)**nGlen*&
-                      (Surf - Model % Nodes % y(DownPointer(l)))**(nGlen-1))
-              END IF
-
-              !SIAxVelocity(l) = Integral
-              IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
-              l = UpPointer(l)   !step up    
-
-           END DO
-        END IF
-     END DO
-
-
-     !------------------------------------------------------------------------------
-     !   Pressure
-     !------------------------------------------------------------------------------
-
-     SIApressure = 0.0_dp 
-     DO i=1,nsize
-        ! Surf = FreeSurf(FreeSurfPerm(TopPointer(i)))
-        Surf = Model % Nodes % y(TopPointer(i))
-        SIApressure(i)=rho*g*(Surf - Model % Nodes % y(i))
-     END DO
-
-     !------------------------------------------------------------------------------
-     !   dvxdx
-     !------------------------------------------------------------------------------
-
-     DO i = 1, Model % Mesh % NumberOfNodes
-        SurfGrad1 = GradSurface1(GradSurface1Perm(TopPointer(i)))
-        SurfGrad2= 0.0_dp
-        SurfGrad1Grad1=GradGradSurface1(DIM*(GradSurface1Perm(TopPointer(i))-1)+1)
-        SurfGrad2Grad1=0.0_dp
-
-        !  Surf = FreeSurf(FreeSurfPerm(TopPointer(i)))
-        Surf =  Model % Nodes % y(TopPointer(i))
-
-        BedGrad1=0.0_dp
-	IF (BedrockData) THEN
-           BedGrad1 = GradBed1(GradBed1Perm(BotPointer(i)))
-        END IF
-
-        !A3hminusz3= Integral of 2A*(rho*g)^3*(h-z)^3
-        !threeA3hminusz2= integral of 3*2A*(rho*g)^3*(h-z)^2
-        !dAdxhminusz3= Integral of 2*dAdx*(rho*g)^3*(h-z)^3
-
-        dvxdx(i)= -SurfGrad1*(2.0_dp*SurfGrad1*SurfGrad1Grad1 + 2.0_dp*SurfGrad2*SurfGrad2Grad1)**((nGlen-1.0)/2.0)*A3hminusz3(i) & 
-             -SurfGrad1Grad1*SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)  &
-             -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*SurfGrad1*threeA3hminusz2(i) &
-             + SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)&
-             *2.0*BedGrad1*ArrheniusFactor(i)*(rho*g)**nGlen*(Surf - Model % Nodes % y(i))**nGlen &  !leibniz term
-             -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*dAdxhminusz3(i)
-     END DO
-
-
-     dvydy=0.0_dp
-
-  ELSE IF (dim == 3) THEN!--------------------------------------------------------------------------------------
+     SIApressure(i)=rho*g*(Surf - Position)
+  END DO
 
 
 
-     !------------------------------------------------------------------------------
-     !   Integral of 2A(rho*g)^3*(h-z)^3
-     !------------------------------------------------------------------------------
-     !*************************************************************************************
-
-
-     !Integration from bottom to z-level, trapezoidal method
-     DO i=1,nsize
-
-        IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
-
-           l = i !start at the bottom of the line
-           A3hminusz3(l) = 0.0_dp !Integral is zero at the bottom
-
-           DO k=1,nsize
-
-              !  Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
-              Surf = Model % Nodes % z(TopPointer(l))
-
-              IF( k > 1 ) THEN !above bottom
-                 dx = (Coord(l) - Coord(DownPointer(l)))            
-
-                 A3hminusz3(l)=A3hminusz3(DownPointer(l))+0.5_dp*dx*( &
-                      2.0_dp*ArrheniusFactor(l)*(rho*g)**nGlen*& 
-                      (Surf - Model % Nodes % z(l))**nGlen + &
-                      2.0_dp*ArrheniusFactor(DownPointer(l))*(rho*g)**nGlen*&
-                      (Surf - Model % Nodes % z(DownPointer(l)))**nGlen)
-
-
-              END IF
-
-              !SIAxVelocity(l) = Integral
-              IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
-
-              l = UpPointer(l)   !step up   
-
-
-           END DO
-        END IF
-     END DO
-
-
-
-     !------------------------------------------------------------------------------
-     !   Integral of 2*dAdx*(rho*g)^3*(h-z)^3
-     !------------------------------------------------------------------------------
-
-
-     IF (.NOT. ConstTemp) THEN
-        !Integration from bottom to z-level, trapezoidal method
-        DO i=1,nsize
-           IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
-              l = i !start at the bottom of the line
-              dAdxhminusz3(l) = 0.0_dp !Integral is zero at the bottom
-              DO k=1,nsize
-
-                 ! Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
-                 Surf =  Model % Nodes % z(TopPointer(l))
-
-                 IF( k > 1 ) THEN !above bottom
-                    dx = (Coord(l) - Coord(DownPointer(l)))
-                    dAdxhminusz3(l)=dAdxhminusz3(DownPointer(l))+0.5_dp*dx*( &
-                         2*dArrheniusFactordT(l)*TempGrad1(TempGrad1Perm(l))*(rho*g)**nGlen*& 
-                         (Surf - Model % Nodes % z(l))**nGlen + &
-                         2*dArrheniusFactordT(DownPointer(l))* &
-                         TempGrad1(TempGrad1Perm(DownPointer(l)))*(rho*g)**nGlen*&
-                         (Surf - Model % Nodes % z(DownPointer(l)))**nGlen)
-                 END IF
-
-                 IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
-                 l = UpPointer(l)   !step up    
-
-              END DO
-           END IF
-        END DO
-     ELSE
-        dAdxhminusz3 = 0.0_dp
-     END IF
+  IF (dim == 3) THEN!--------------------------------------------------------------------------------------
 
      !------------------------------------------------------------------------------
      !   Integral of 2*dAdy*(rho*g)^3*(h-z)^3
@@ -727,102 +640,72 @@ INTEGER, POINTER :: ThickPerm(:)
               END DO
            END IF
         END DO
-     ELSE
+     ELSE !constant temperature
         dAdyhminusz3 = 0.0_dp 
      END IF
+  ELSE !2D case
+     dAdyhminusz3 = 0.0_dp 
+  END IF
+
+  !------------------------------------------------------------------------------
+  !   dvxdx, dvydy
+  !------------------------------------------------------------------------------
 
 
-     !------------------------------------------------------------------------------
-     !   integral of 3*2A*(rho*g)^3*(h-z)^2
-     !------------------------------------------------------------------------------
+  dvxdx=0.0
+  dvydy=0.0
+  BedGrad1=0.0_dp 
+  BedGrad2=0.0_dp
 
-     !Integration from bottom to z-level, trapezoidal method
-     DO i=1,nsize
-        IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
-           l = i !start at the bottom of the line
+  SurfGrad2=0.0
+  SurfGrad2Grad2=0.0
+  SurfGrad2Grad1=0.0
+  SurfGrad1Grad2=0.0
 
-           threeA3hminusz2(l) = 0.0_dp !Integral is zero at the bottom
-           DO k=1,nsize
+  DO i = 1, Model % Mesh % NumberOfNodes
 
+     IF (dim == 2) THEN
+        Surf= Model % Nodes % y(TopPointer(i))
+        Position =  Model % Nodes % y(i)
+     ELSEIF (dim ==3) THEN
+        Surf= Model % Nodes % z(TopPointer(i))
+        Position = Model % Nodes % z(i)
+     END IF
 
+     SurfGrad1 = GradSurface1(GradSurface1Perm(TopPointer(i)))
+     SurfGrad1Grad1=GradGradSurface1(DIM*(GradSurface1Perm(TopPointer(i))-1)+1)
 
-              !Surf = FreeSurf(FreeSurfPerm(TopPointer(l)))
-              Surf =  Model % Nodes % z(TopPointer(l))
-
-              IF( k > 1 ) THEN !above bottom
-
-                 dx = (Coord(l) - Coord(DownPointer(l)))
-                 threeA3hminusz2(l)=threeA3hminusz2(DownPointer(l))+3.0_dp*0.5_dp*dx*( &
-                      2*ArrheniusFactor(l)*(rho*g)**nGlen*& 
-                      (Surf - Model % Nodes % z(l))**(nGlen-1) + &
-                      2*ArrheniusFactor(DownPointer(l))*(rho*g)**nGlen*&
-                      (Surf - Model % Nodes % z(DownPointer(l)))**(nGlen-1))
-              END IF
-
-              !SIAxVelocity(l) = Integral
-              IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
-              l = UpPointer(l)   !step up    
-
-           END DO
-        END IF
-     END DO
-
-
-     !------------------------------------------------------------------------------
-     !   Pressure
-     !------------------------------------------------------------------------------
-
-
-     SIApressure = 0.0_dp 
-
-     DO i=1,nsize
-
-        !  Surf = FreeSurf(FreeSurfPerm(TopPointer(i)))
-        Surf = Model % Nodes % z(TopPointer(i))
-
-        SIApressure(i)=rho*g*(Surf - Model % Nodes % z(i))
-
-     END DO
-
-     !------------------------------------------------------------------------------
-     !   dvxdx, dvydy
-     !------------------------------------------------------------------------------
-
-
-     dvxdx=0.0
-     dvydy=0.0
-     DO i = 1, Model % Mesh % NumberOfNodes
-        SurfGrad1 = GradSurface1(GradSurface1Perm(TopPointer(i)))
+     IF (dim ==3) THEN
         SurfGrad2= GradSurface2(GradSurface2Perm(TopPointer(i)))
-        SurfGrad1Grad1=GradGradSurface1(DIM*(GradSurface1Perm(TopPointer(i))-1)+1)
         SurfGrad2Grad2=GradGradSurface2(DIM*(GradSurface2Perm(TopPointer(i))-1)+2)
         SurfGrad2Grad1=GradGradSurface2(DIM*(GradSurface2Perm(TopPointer(i))-1)+1)
         SurfGrad1Grad2=GradGradSurface1(DIM*(GradSurface1Perm(TopPointer(i))-1)+2)
-        BedGrad1=0.0_dp !why?
-        BedGrad2=0.0_dp
-       
-        ! Surf = FreeSurf(FreeSurfPerm(TopPointer(i)))
-        Surf =  Model % Nodes % z(TopPointer(i))
+     END IF
 
-        dvxdx(i)=  -SurfGrad1*(2.0_dp*SurfGrad1*SurfGrad1Grad1 + 2.0_dp*SurfGrad2*SurfGrad2Grad1)**((nGlen-1.0)/2.0)*A3hminusz3(i) & 
-             -SurfGrad1Grad1*SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)  &
-             -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*SurfGrad1*threeA3hminusz2(i) &
-             + SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)&
-             *BedGrad1*2.0*ArrheniusFactor(i)*(rho*g)**nGlen*(Surf - Model % Nodes % z(i))**nGlen  & !leibniz term
-             -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*dAdxhminusz3(i)
+     IF (BedrockData) THEN
+        BedGrad1 = GradBed1(GradBed1Perm(BotPointer(i)))
+        IF (dim ==3) THEN
+           BedGrad2 = GradBed2(GradBed2Perm(BotPointer(i)))
+        END IF
+     END IF
 
+     dvxdx(i)=  -SurfGrad1*(2.0_dp*SurfGrad1*SurfGrad1Grad1 + 2.0_dp*SurfGrad2*SurfGrad2Grad1)**((nGlen-1.0)/2.0)*A3hminusz3(i) & 
+          -SurfGrad1Grad1*SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)  &
+          -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*SurfGrad1*threeA3hminusz2(i) &
+          + SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)&
+          *BedGrad1*2.0*ArrheniusFactor(i)*(rho*g)**nGlen*(Surf - Model % Nodes % z(i))**nGlen  & !leibniz term
+          -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*dAdxhminusz3(i)
 
-        dvydy(i)= -SurfGrad2* (2.0_dp*SurfGrad1*SurfGrad1Grad2 + 2.0_dp*SurfGrad2*SurfGrad2Grad2)**((nGlen-1.0)/2.0)*A3hminusz3(i) & 
+     IF (dim ==3) THEN
+        dvydy(i)= -SurfGrad2*(2.0_dp*SurfGrad1*SurfGrad1Grad2 + 2.0_dp*SurfGrad2*SurfGrad2Grad2)**((nGlen-1.0)/2.0)*A3hminusz3(i) & 
              -SurfGrad2Grad2*SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)  &
              -SurfGrad2* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*SurfGrad2*threeA3hminusz2(i) &
              + SurfGrad2* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)&
              * BedGrad2*2.0*ArrheniusFactor(i)*(rho*g)**nGlen*(Surf - Model % Nodes % z(i))**nGlen  & !leibniz term
              -SurfGrad2* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*dAdyhminusz3(i)
+     END IF
 
-     END DO
-
-  END IF !if dim=2 else dim=3
-
+  END DO
 
   !------------------------------------------------------------------------------
   !   z-Velocity
@@ -834,11 +717,6 @@ INTEGER, POINTER :: ThickPerm(:)
         l = i !start at the bottom of the line
         intdvxdx(l) = 0.0_dp !Integral is zero at the bottom
         DO k=1,nsize
-           IF (dim==2) THEN
-              Surf =  Model % Nodes % y(TopPointer(l))
-           ELSE
-              Surf =  Model % Nodes % z(TopPointer(l))
-           END IF
 
            IF( k > 1 ) THEN !above bottom
               dx = (Coord(l) - Coord(DownPointer(l)))
@@ -853,36 +731,6 @@ INTEGER, POINTER :: ThickPerm(:)
 
      END IF
   END DO
-
-  !----------------------------------------------------------------------------------
-  ! This I wanna change when there is a node-wise way of reading in Slip-coefficient
-  !----------------------------------------------------------------------------------
-
-!     DO t = 1,Solver % Mesh % NumberOfBoundaryElements
-
-!        Element => GetBoundaryElement(t)
-!        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-!        n = GetElementNOFNodes()
-        !
-        !       The element type 101 (point element) can only be used
-        !       to set Dirichlet BCs, so skip ´em at this stage.
-        !
-!        IF ( GetElementFamily() == 1 ) CYCLE
-
-!        CALL GetElementNodes( ElementNodes )
-!        NodeIndexes => Element % NodeIndexes
-
-!        BC => GetBC()
-!        IF ( .NOT. ASSOCIATED(BC) ) CYCLE
-
-!        !------------------------------------------------------------------------------
-!        GotForceBC = GetLogical( BC, 'Flow Force BC',gotIt )
-!        IF ( .NOT. gotIt ) GotForceBC = .TRUE.
-
-!.........................................
-!.........................................
-
 
   !First a try run to get what bc has the slip coefficient, if it has it
   bottomindex=0
@@ -942,46 +790,47 @@ INTEGER, POINTER :: ThickPerm(:)
            !------------------------------------------------------------------------------
            ! Sliding
            !------------------------------------------------------------------------------
-           
+
            !Zero if not at bottom AND sliding
            uB1=0
            uB2=0
            uB3=0
            IF (bottomindex .NE. 0) THEN  !sliding
 
-                 j = BotPointer(i) !sliding is at bottom but added everywhere in the column
+              WRITE(*,*) 'ADDING SLIDING' 
 
-                 Slip1 = ListGetRealAtNode( Model % BCs(bottomindex) % Values, &
-                      'Slip Coefficient 2', j, GotIt)
+              j = BotPointer(i) !sliding is at bottom but added everywhere in the column
 
-                 Slip2 = ListGetRealAtNode( Model % BCs(bottomindex) % Values, &
-                      'Slip Coefficient 3', j, GotIt)
+              Slip1 = ListGetRealAtNode( Model % BCs(bottomindex) % Values, &
+                   'Slip Coefficient 2', j, GotIt)
 
-                 CALL LinearSliding( Slip1, Slip2, Normal(DIM*(NormalPerm(j)-1)+1), &
-                      Normal(DIM*(NormalPerm(j)-1)+2),Normal(DIM*(NormalPerm(j)-1)+3), &
-                      - rho*g*SurfGrad1*(Surf - Model % Nodes % z(j)), - rho*g*SurfGrad2*(Surf - Model % Nodes % z(j)), &
-                      uB1,uB2,uB3) 
-              END IF !if at bottom
-         !  END IF !if sliding
+              Slip2 = ListGetRealAtNode( Model % BCs(bottomindex) % Values, &
+                   'Slip Coefficient 3', j, GotIt)
+
+              CALL LinearSliding( Slip1, Slip2, Normal(DIM*(NormalPerm(j)-1)+1), &
+                   Normal(DIM*(NormalPerm(j)-1)+2),Normal(DIM*(NormalPerm(j)-1)+3), &
+                   - rho*g*SurfGrad1*(Surf - Model % Nodes % z(j)), - rho*g*SurfGrad2*(Surf - Model % Nodes % z(j)), &
+                   uB1,uB2,uB3) 
+           END IF !if at bottom
 
            vx=  uB1-SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)
            vy = uB2 -SurfGrad2* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)
            vz = uB3 -intdvxdx(i) 
 
 	   IF (FOUND_VELO_LIMIT) THEN !limit the velocity magnitude
-  	   	IF ((vx**2.0+vy**2.0+vz**2.0) > VELO_LIMIT**2.0 ) THEN
-                	veloratio = VELO_LIMIT**2.0/(vx**2.0+vy**2.0+vz**2.0)
-                	vx=vx*veloratio
-                	vy=vy*veloratio
-                	vz=vz*veloratio
-	   	END IF
+              IF ((vx**2.0+vy**2.0+vz**2.0) > VELO_LIMIT**2.0 ) THEN
+                 !        veloratio = VELO_LIMIT**2.0/(vx**2.0+vy**2.0+vz**2.0)
+                 !        vx=vx*veloratio
+                 !        vy=vy*veloratio
+                 !        vz=vz*veloratio
+              END IF
            END IF
 
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 1) = vx
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = vy
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = vz
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 4) =  SIApressure(i)
-   
+
         END IF
      END DO
 
