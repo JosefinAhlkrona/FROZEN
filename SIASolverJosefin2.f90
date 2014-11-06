@@ -251,13 +251,13 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   !    Get variables needed for solution
   !------------------------------------------------------------------------------
   DIM = CoordinateSystemDimension()
-  VeloSol => VariableGet( Solver % Mesh % Variables, 'SIAFlow2' )
+  VeloSol => VariableGet( Solver % Mesh % Variables, 'SIAFlow' )
   IF (ASSOCIATED(veloSol)) THEN
      Velocity => VeloSol % Values
      VeloPerm => VeloSol % Perm
      PrevVelo => VeloSol % PrevValues
   ELSE
-     CALL FATAL(SolverName,'Could not find variable >SIAFlow2<')
+     CALL FATAL(SolverName,'Could not find variable >SIAFlow<')
   END IF
 
 
