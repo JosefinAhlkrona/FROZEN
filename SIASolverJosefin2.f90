@@ -466,7 +466,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !   Integral of 2A*(rho*g)^n*(h-z)^n
   !------------------------------------------------------------------------------
-
   !Integration from bottom to z-level, trapezoidal method
   DO i=1,nsize
      IF( i == BotPointer(i) ) THEN !so this loop will be over the extruded lines
@@ -502,7 +501,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
         END DO
      END IF
   END DO
-
 
   !!------------------------------------------------------------------------------
   !   Integral of 2*dAdx*(rho*g)^3*(h-z)^3
@@ -578,7 +576,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
                    (Surf - PositionUnder)**(nGlen-1))
            END IF
 
-           !SIAxVelocity(l) = Integral
            IF( l == TopPointer(l)) EXIT !if reached end of extruded line, go to next one
            l = UpPointer(l)   !step up    
 
@@ -766,7 +763,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            SurfGrad1 = GradSurface1(GradSurface1Perm(TopPointer(i)))
            SurfGrad2= 0.0_dp   
 
-           vx= -SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)
+           vx= -SurfGrad1* ABS(SurfGrad1)**(nGlen-1.0)*A3hminusz3(i)
            vy= -intdvxdx(i)
 
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 1) = vx
@@ -797,7 +794,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            uB3=0
            IF (bottomindex .NE. 0) THEN  !sliding
 
-              WRITE(*,*) 'ADDING SLIDING' 
 
               j = BotPointer(i) !sliding is at bottom but added everywhere in the column
 
@@ -819,10 +815,10 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
 
 	   IF (FOUND_VELO_LIMIT) THEN !limit the velocity magnitude
               IF ((vx**2.0+vy**2.0+vz**2.0) > VELO_LIMIT**2.0 ) THEN
-                 !        veloratio = VELO_LIMIT**2.0/(vx**2.0+vy**2.0+vz**2.0)
-                 !        vx=vx*veloratio
-                 !        vy=vy*veloratio
-                 !        vz=vz*veloratio
+                        veloratio = VELO_LIMIT**2.0/(vx**2.0+vy**2.0+vz**2.0)
+                         vx=vx*veloratio
+                         vy=vy*veloratio
+                         vz=vz*veloratio
               END IF
            END IF
 
@@ -850,6 +846,4 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
 END SUBROUTINE SIASolverJosefin2
 !------------------------------------------------------------------------------
-
-
 
