@@ -2,7 +2,7 @@
 Version = 210903
 Coordinate System = Cartesian 2D
 Subcell Divisions in 2D = 1 1
-Subcell Limits 1 = 0 700000
+Subcell Limits 1 = 0 750000
 Subcell Limits 2 = 0 1
 Material Structure in 2D
   1
@@ -20,6 +20,6 @@ Element Degree = 1
 Element Innernodes = False
 Element Ratios 1 = 1 
 Element Ratios 2 = 1 
-Element Divisions 1 = 30
+Element Divisions 1 = 60
 Element Divisions 2 = 10
  

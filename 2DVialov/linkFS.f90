@@ -33,7 +33,7 @@ FUNCTION linkFS (Model, nodenumber, Array) RESULT(TopSurface)
 
   IF (FirstTime) THEN
      R = (X**2.0_dp + Y**2.0_dp)**0.5_dp
-     L = 600000.0_dp
+     L = 750000.0_dp
      H0 = 3575.1_dp
      n = 3.0_dp
      IF (R < L) THEN

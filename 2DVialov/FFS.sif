@@ -1,4 +1,4 @@
-$name = "FFSmesh"
+$name = "vialov"
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! HEADER
@@ -34,13 +34,28 @@ $ function convertTemp(th) {\
 
 $ function surface(x) {\
 eps=100;\
-L = 600000.0;\
+L = 750000.0;\
 h_0=3575.1;\
 n=3;\
 if (abs(x) < L) {\
      _surface=h_0*(1-(abs(x)/L)^((n+1)/n))^(n/(2*n+2))+eps;\
    }else {_surface = eps;}\
 }
+
+!$ function surface(x) {\
+!eps=100;\
+!L = 600000.0;\
+!h_0=3575.1;\
+!n=3;\
+!back=10000;\
+!hL=h_0*(1-(abs(L-back)/L)^(4/3))^(3/7)+2*eps;\
+!if (abs(x) < L-back) {\
+!     _surface=h_0*(1-(abs(x)/L)^(4/3))^(3/7)+2*eps;\
+!}else {\
+!	lambda=exp(-6*(x-(L-back))/100000);\
+!	if (lambda>1) lambda=1;\
+!	_surface = lambda*hL+(1-lambda)*eps;}\
+!}
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -67,7 +82,7 @@ Simulation
   Simulation Type = Transient 
   Timestepping Method = "BDF"
   BDF Order = 1
-  Timestep Intervals = 20 !50 years
+  Timestep Intervals = 5 !50 years
   Timestep Sizes =  0.0833333333    !1 month = 0.0833333333 year
   
   Steady State Max Iterations = 1
@@ -147,7 +162,7 @@ Solver 5
 End
 
 Solver 6 !I dont use it for this flat bedrock
-  Exec Solver = Never
+  !Exec Solver = Never
   Equation = ComputeFlux5
   Procedure = "FluxSolver" "FluxSolver"
   Calculate Grad = Logical True
@@ -173,7 +188,7 @@ Solver 7
 
   Active Coordinate = 2
 
-  Bedrock Data = Logical True !if false bedrock is zero
+  Bedrock Data = Logical False !if false bedrock is zero
   Bedrock Name = String BedrockElevation
   
   Surface Name = String H
@@ -199,10 +214,10 @@ Solver 8
   !Bubbles = True
   Steady State Convergence Tolerance = 1.0e-5
 
-  Linear System Scaling=False
-  Optimize Bandwidth = False
+  Linear System Scaling=True
+  Optimize Bandwidth = True
 
-  Nonlinear System Convergence Tolerance = 1.0E-05
+  Nonlinear System Convergence Tolerance = 1.0E-04
   Nonlinear System Max Iterations = 100
   Nonlinear System Newton After Iterations = 500
   Nonlinear System Newton After Tolerance = 1.0e-16
@@ -219,7 +234,7 @@ Solver 8
 !-----------------------------------
 
   Couple Approximations = Logical True
-  SIA as initial condition = Logical False
+  SIA as initial condition = Logical True
 
   Error Estimation Intervals = Integer 1
 
@@ -232,8 +247,8 @@ Solver 8
   Active Coordinate = 2
 
 !solution based error estimation
-  Relative Error Allowed In Percent = Real 3.0
-  Absolute Error Allowed = Real 0.1 !m/a
+  Relative Error Allowed In Percent = Real 5.0
+  Absolute Error Allowed = Real 1 !m/a
 
 !residual based error estimation
   Maximum Allowed Residual = Real 10000.0
@@ -522,8 +537,8 @@ End
 Boundary Condition 3
   Target Boundaries = 3
   Name = "Surface"
-  !Top Surface = Variable Coordinate 1 
-  !Real MATC "surface(tx)"
+  Top Surface = Variable Coordinate 1 
+  Real MATC "surface(tx)"
   Top Surface = Variable Timestep, H, Coordinate 1
      Real Procedure "./linkFS" "linkFS"
   Body Id = 2
