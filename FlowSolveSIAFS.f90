@@ -1649,11 +1649,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
                             NSDOFs*(BlockOrderAllToSplit(j)-1)+k_j, A % Values(j_jos))
                     ELSE IF (NodeType2(ProperNodes(InvPerm(j))) .EQ. 1)  THEN ! Coupling from SIA to FS
 
-!IF ( SIZE(A_Coupling % Cols) .NE. SIZE(A_Coupling % Values) ) THEN
-!WRITE(*,*) 'i,j=', i_jos,j_jos
-!WRITE(*,*) 'SIZE A_Coupling=', SIZE(A_Coupling % Cols), SIZE(A_Coupling % Values)
-!END IF
-
                        !Add to A_coupling
                        CALL SetMatrixElement(A_Coupling,i_jos, &
                             A % Cols(j_jos), A % Values(j_jos))
@@ -1673,8 +1668,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            CALL AddToMatrixElement(A_Coupling,i,i,0._dp) !fill in diagonal
         END DO
 
-WRITE(*,*) 'hey babe'
-WRITE(*,*) 'SIZE A_Coupling=', SIZE(A_Coupling % Cols), SIZE(A_Coupling % Values)
 
 
         IF(Iter==1 .AND. REALLOCATE_Josefin) THEN
@@ -1706,9 +1699,6 @@ WRITE(*,*) 'SIZE A_Coupling=', SIZE(A_Coupling % Cols), SIZE(A_Coupling % Values
 
         ELSE ! serial run
            CALL CRS_MatrixVectorMultiply(A_Coupling,SIAVelPermuted,yy)
-           WRITE(*,*) MAXVAL(yy)
-           WRITE(*,*) MAXVAL(SIAVelPermuted)
-           WRITE(*,*) MAXVAL(A_Coupling % Values)
         END IF
 
         !Including the coupling vector in the RHS of A_FS
@@ -1964,8 +1954,6 @@ WRITE(*,*) 'SIZE A_Coupling=', SIZE(A_Coupling % Cols), SIZE(A_Coupling % Values
         !deallocate stuff you used
         DEALLOCATE(x_FS,STAT=istat)
         IF(ActiveInThisTimeStep.NE.0) THEN
-
-WRITE(*,*) 'hey im here'
 
        !    IF (AFSrow >0) THEN
               DEALLOCATE(A_FS % Rows)

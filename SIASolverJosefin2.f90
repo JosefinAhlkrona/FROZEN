@@ -794,7 +794,6 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            uB3=0
            IF (bottomindex .NE. 0) THEN  !sliding
 
-
               j = BotPointer(i) !sliding is at bottom but added everywhere in the column
 
               Slip1 = ListGetRealAtNode( Model % BCs(bottomindex) % Values, &
@@ -808,6 +807,10 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
                    - rho*g*SurfGrad1*(Surf - Model % Nodes % z(j)), - rho*g*SurfGrad2*(Surf - Model % Nodes % z(j)), &
                    uB1,uB2,uB3) 
            END IF !if at bottom
+
+           uB1=0
+           uB2=0
+           uB3=0
 
            vx=  uB1-SurfGrad1* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)
            vy = uB2 -SurfGrad2* SQRT(SurfGrad1**2.0 + SurfGrad2**2.0)**(nGlen-1.0)*A3hminusz3(i)
