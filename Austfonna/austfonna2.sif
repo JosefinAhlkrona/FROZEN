@@ -14,8 +14,8 @@ check keywords warn
 echo on
 
 ! Name of output files
-$Step = "austfonna3_"
-$name = "austfonna3_noTherm"
+$Step = "austfonna2_"
+$name = "austfonna2_noTherm"
 
 ! Define the parameter in MPa - a - m
 $yearinsec = 365.25*24*60*60
@@ -62,7 +62,7 @@ Simulation
   ! ----------------
   Timestepping Method = "BDF"
   BDF Order = 1
-  Timestep Intervals = 1
+  Timestep Intervals = 5
   Timestep Sizes = 1     
 
   Extruded Mesh Levels = Integer 16
@@ -76,8 +76,8 @@ Simulation
 
 !  Restart File = "asf_ti_3.sif.result"
 
-  Output File = "mesh2D_ausfonna3_$Step".result"
-  Post File = "mesh2D_ausfonna3_$Step".vtu"
+  Output File = "mesh2D_ausfonna2_$Step".result"
+!  Post File = "mesh2D_ausfonna2_$Step".vtu"
   max output level = 3   
 End
 
@@ -441,6 +441,8 @@ Solver 10
 End
 
 Solver 11
+ Exec Solver = never
+
   Equation = "SaveMaterials_dubble"
   Procedure = File "SaveData" "SaveMaterials"
 End
@@ -453,11 +455,11 @@ Equation 1
 End
 
 Equation 2
-  Active Solvers(3) = 1 2 11
+  Active Solvers(1) =  11
 End
 
 Equation 3
-  Active Solvers(3) = 1 2 6
+  Active Solvers(1) =  6
   Flow Solution Name = String "Flow Solution"
   Convection = Computed
 End
