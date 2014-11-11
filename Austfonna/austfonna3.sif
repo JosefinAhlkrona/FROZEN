@@ -1,0 +1,709 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+
+!! 
+!! Does the transient simulation of Austfonna without thermodynamics      !! 
+
+! tested and compared with Ruper Gladstone's file, and it gives essentially the same results, as one would hope
+! differences are attributed to the slightly different gridding
+
+! added shallow ice solver
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+check keywords warn
+echo on
+
+! Name of output files
+$Step = "austfonna3"
+$name = "austfonna3_noTherm"
+
+! Define the parameter in MPa - a - m
+$yearinsec = 365.25*24*60*60
+
+$gravity = 9.7696e15
+$rhoi = 9.1501e-19 ! replaces: MATC "910.0*1.0E-06*(31556926.0)^(-2.0)"
+$rhow = 1000.0*9.1501e-19/910.0 !1.0055e-18
+
+! Prefactor from Cuffey and Paterson (2010) in MPa^{-3} a^{-1}
+$A1 = 2.89165e-13*yearinsec*1.0e18 
+$A2 = 2.42736e-02*yearinsec*1.0e18 
+$Q1 = 60.0e3
+$Q2 = 115.0e3
+
+Header
+  Mesh DB "." "mesh2D"
+End
+
+
+! need some sort of function that will make sure the mesh is not too thin at the boundaries. This was a function used
+! in Josefin's SeaRise experiment, which will probably need to be updated prior to being used in this sif file
+
+
+$function getsurface(in) {\
+  surf = in(0);\
+  bed = in(1);\
+  if ((surf-bed) < 10.0) surf = bed+10.0;\
+  _getsurface = surf;\
+}
+
+
+
+
+
+
+Constants
+  Water Density = Real $rhow
+  Gas Constant = Real 8.314 !Joule/mol x  K 
+End
+
+!! water pressure at glacier front
+$ function waterpressure(Z) {\
+  rhow = 1012.0;\
+  waterline = 0.0;\
+  G = 9.81;\
+  _waterpressure = 0.0;\
+  if (Z>waterline) {\
+       _waterpressure = 0.0;\
+  }else {\
+       _waterpressure = 1.0 * rhow * G * (waterline - Z);\
+  }\
+}
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  =  Cartesian 3D 
+  Simulation Type ="Transient"
+
+  ! Time integration
+  ! ----------------
+  Timestepping Method = "BDF"
+  BDF Order = 1
+  Timestep Intervals = 5
+  Timestep Sizes = 1   
+
+! extruded mesh levels, might be safe to use a lower value for larger ice sheets  
+
+  Extruded Mesh Levels = Integer 16
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+
+! load the initialization file
+
+  Restart File = "mesh2D_ausfonna3_init.result"
+  Restart Position = 0 !0 means lastly stored
+ Initialize Dirichlet Conditions = Logical True !hmmm... not sure about this one
+  Restart Before Initial Conditions = Logical True !T
+
+
+  Output File = "mesh2D_ausfonna3_$Step".result"
+ ! Post File = "mesh2D_ausfonna3_$Step".vtu"
+  max output level = 7
+
+! added temperature
+
+Temp = Real 268.15
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Name = "glacier"
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "Bed"
+  Equation = 2
+  Initial Condition = 1
+  Material = 1
+End
+Body 3
+  Name = "Surf"
+  Equation = 3
+  Initial Condition = 2
+  Material = 2
+  Body Force = 2
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+
+! initial glacier has no velocity
+
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+  Velocity 3 = Real 0.0 
+
+
+
+ ! Depth = Real 0.0 
+ ! Height = Real 0.0 
+
+!  Mesh Update 3 = Real 0.0
+!  Mesh Update 2 = Real 0.0
+!  Mesh Update 1 = Real 0.0
+
+
+End
+
+Initial Condition 2
+
+! free surface initial conditions
+
+ ! FS = Equals Coordinate 3
+
+! the following function calls ensure that the mesh is a minimum thickness (which is currently set to 10 m)
+
+  ReferenceFS = Variable ZsDEM,BedDEM
+ Real MATC "getsurface(tx)" 
+
+  FS = Variable ZsDEM,BedDEM
+ Real MATC "getsurface(tx)" 
+
+!  Mesh Update 3 = Real 0.0
+ ! Mesh Update 2 = Real 0.0
+!  Mesh Update 1 = Real 0.0
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+
+! Body force for the glacier, only gravity is acting on it now
+
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity 
+
+ ! Mesh Update 2 = Real 0.0
+ ! Mesh Update 1 = Real 0.0
+End
+
+Body Force 2
+
+! surface body force, which is defined here to be the accumulation at the surface. Currently set to be zero
+
+  FS Accumulation Flux 1 = Real 0.0
+  FS Accumulation Flux 2 = Real 0.0
+  FS Accumulation Flux 3 = Real 0.0!Variable smb
+    !Real MATC "tx / 910.0"
+  ! smb conversion from mm w.e. per year to m ice per year.
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+
+! material 1 is the glacier. This has the various properties of it, including density, the sliding
+
+  Density =  Real $rhoi
+
+  Critical Shear Rate = Real 1.0e-10
+
+  Sliding = real 0.1! equals beta
+
+  !mesh update solver stuff
+  !------------------------
+  Mesh Elastic Modulus = 1.0
+  Mesh Poisson Ratio = 0.3
+
+  ! Glen's flow law (using Glen)
+  !----------------
+  ! viscosity stuff
+  !----------------
+  Viscosity Model = String "Glen"
+  ! Viscosity has to be set to a dummy value
+  ! to avoid warning output from Elmer
+  Viscosity = Real 1.0 
+  Glen Exponent = Real 3.0
+  ! Rate factors (Paterson value in MPa^-3a^-1)
+  Rate Factor 1 = Real 1.258e13  
+  Rate Factor 2 = Real 6.046e28
+  ! these are in SI units - no problem, as long as
+  ! the gas constant also is 
+  Activation Energy 1 = Real 60e3
+  Activation Energy 2 = Real 139e3  
+  Glen Enhancement Factor = Real 1.0
+  ! the variable taken to evaluate the Arrhenius law
+  ! in general this should be the temperature relative
+  ! to pressure melting point. The suggestion below plugs
+  ! in the correct value obtained with TemperateIceSolver
+  ! Temperature Field Variable = String "Temperature Homologous"
+  ! the temperature to switch between the 
+  ! two regimes in the flow law
+  Set Arrhenius Factor = Logical True
+  Arrhenius Factor = Real $1.0E-16 * 1.0E18
+  Limit Temperature = Real -10.0
+
+  Isothermal = Logical True ! Josefin added this, sets the glacier to be a constant temperature
+
+End
+
+Material 2 ! surface
+
+ Density =  Real $rhoi
+ Min FS = Variable Coordinate 3, Height
+      Real MATC "tx(0) - tx(1) + 10.0"
+ Max FS = Variable ReferenceFS
+      Real MATC "tx(0) + 400.0"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+
+! Mesh extrusion parameters
+
+  Exec Solver = "Before Simulation"
+  Equation = "Read DEMs"
+
+  Procedure = "ElmerIceSolvers" "Grid2DInterpolator"
+
+  ! Bedrock DEM
+  Variable 1 = String "BedDEM"
+ Variable 1 data file = File "bed_dem_final.xyz" ! adjust the path if needed later
+ Variable 1 x0 = Real    615179.500    
+ Variable 1 y0 = Real    8804828.00    
+ Variable 1 lx = Real    124000.000    
+ Variable 1 ly = Real    121000.000    
+ Variable 1 Nx = Integer          125
+ Variable 1 Ny = Integer         122
+ Variable 1 Invert = Logical True
+ Variable 1 Fill = Logical False 
+ Variable 1 Position Tol = Real 1.0e-1
+ Variable 1 No Data = Real   -9999999.00    
+ Variable 1 No Data Tol = Real 1.0 
+
+  ! Surface DEM
+  Variable 2 = String "ZsDEM"
+Variable 2 data file = File "surf_dem_final.xyz" ! adjust the path if needed later
+Variable 2 x0 = Real    615329.500    
+Variable 2 y0 = Real    8804878.00    
+Variable 2 lx = Real    123400.000    
+Variable 2 ly = Real    120400.000    
+Variable 2 Nx = Integer         1235
+Variable 2 Ny = Integer        1205
+Variable 2 Invert = Logical True
+Variable 2 Fill = Logical False 
+Variable 2 Position Tol = Real 1.0e-1
+Variable 2 No Data = Real   -9999999.00    
+Variable 2 No Data Tol = Real 1.0 
+
+
+End 
+
+
+Solver 2  
+
+! this solver does the actual extrusion of the mesh
+
+!Exec Solver = Never
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+
+  Displacement Mode = Logical False
+  Correct Surface = Logical True
+  Minimum Height = Real 1.0
+End
+
+Solver 3
+
+! this solver projected information from the 3D extruded mesh to 2D (e.g. it provides the thickness of the mesh)
+
+
+!Exec Solver = Never
+
+  Equation = "HeightDepth"
+    Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+
+  Operator 1 = depth
+  Operator 2 = height
+  Operator 3 = thickness
+
+
+
+End
+
+Solver 4
+
+
+! this solver calculates the solution normal to the surface
+
+  !Exec Condition = Variable Time
+  !       Real MATC "if(tx(0) == 2.0) {1} else  {-1}" 
+  Equation = "Normal vector"
+  Variable = "Normal Vector"
+  Variable DOFs = 3
+  Optimize Bandwidth = Logical False   
+  Procedure = "ComputeNormal" "ComputeNormalSolver"
+  ComputeAll = Logical False
+End
+ 
+! solvers 5-10 are related to Josefin's SIA solver. Entries are on the wiki https://github.com/JosefinAhlkrona/FROZEN/wiki/sif-entries-for-the-SIA-solver
+
+! solvers 5-9 compute the flux of temperature, the free surface and its gradients, and the bedDEM surface
+
+Solver 5
+!Exec Solver = Never
+Equation = ComputeFlux1
+Procedure = "FluxSolver" "FluxSolver"
+Calculate Grad = Logical True
+Target Variable = String "Temp"
+Linear System Solver = "Direct"
+Linear System Direct Method = mumps
+Variable = -nooutput tempb
+End
+
+Solver 6
+ !Exec Solver = Never
+Equation = ComputeFlux2
+Procedure = "FluxSolver" "FluxSolver"
+Calculate Grad = Logical True
+Target Variable = String "FS"
+Linear System Solver = "Direct"
+Linear System Direct Method = mumps
+Variable = -nooutput flux0
+End
+
+Solver 7
+!Exec Solver = Never
+Equation = ComputeFlux3
+Procedure = "FluxSolver" "FluxSolver"
+Calculate Grad = Logical True
+Target Variable = String "FS grad 1"
+Linear System Solver = "Direct"
+Linear System Direct Method = mumps
+Variable = -nooutput flux1
+End
+
+Solver 8
+!Exec Solver = Never
+Equation = ComputeFlux4
+Procedure = "FluxSolver" "FluxSolver"
+Calculate Grad = Logical True
+Target Variable = String "FS grad 2"
+Linear System Solver = "Direct"
+Linear System Direct Method = mumps
+Variable = -nooutput flux2
+End
+
+Solver 9
+!Exec Solver = Never
+Equation = ComputeFlux5
+Procedure = "FluxSolver" "FluxSolver"
+Calculate Grad = Logical True
+Target Variable = String "BedDEM"
+Linear System Solver = "Direct"
+Linear System Direct Method = mumps
+Variable = -nooutput flux3
+End
+
+!*******************************************
+Solver 10
+
+! this is Josefin's shallow ice approximation routine. There is a description of how it works on the Wiki https://github.com/JosefinAhlkrona/FROZEN/wiki/SIA-solver-keywords
+
+! Exec Solver = Never
+Equation = "SIA"
+Procedure = File "SIASolverJosefin2" "SIASolverJosefin2"
+Variable = -nooutput "SIAvar2"
+Variable DOFs = 1
+Exported Variable 1 = SIAFlow[VelocitySIA:3 PressureSIA:1]
+Exported Variable 1 DOFs = 4
+
+Velocity Cutoff = Real 50000
+
+
+!  Solver Timing = Logical True
+!  Linear System Timing = Logical True
+!  Linear System Timing Cumulative = Logical True
+!  Solver Timing Cumulative = Logical True
+
+! make sure the bedrock name is the same as defined above
+
+Active Coordinate = 3
+Surface Name = String FS
+Bedrock Data = Logical True !if false bedrock is zero
+Bedrock Name = String BedDEM
+
+End
+
+
+
+Solver 11
+
+! this is the Navier Stokes solver that was in the Reykjavik example. Will have to switch it to Josefin's version in the next step (currently this is disabled)
+
+   Equation = "Navier-Stokes"
+ Exec Solver = never
+
+  Exported Variable 1 = -dofs 1 "dSdt" 
+  Exported Variable 2 = -dofs 1 "dS" 
+  Exported Variable 3 = -dofs 1 "BedDEM"
+  Exported Variable 4 = -dofs 1 "ZsDEM"
+
+
+  ! Alternative: Stabilization Method = String Bubbles
+  Stabilization Method = Stabilized
+
+  Linear System Solver = Direct
+  Linear System Direct Method = mumps
+
+!  Linear System Solver = "Iterative"
+!  Linear System Iterative Method = gcr
+  Linear System Max Iterations = 2000
+  Linear System Convergence Tolerance = 5.0E-7
+  Linear System Abort Not Converged =True ! mostly not essential
+  Linear System Preconditioning = "ILU2"
+
+! this changes how long it will take
+  Nonlinear System Max Iterations = 2 !5 
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 500  ! Not currently using Newton iterations, see also elmer/ice wiki
+  Nonlinear System Newton After Tolerance = 1.0e-10
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-5
+End
+
+
+
+
+Solver 12
+
+! free surface solver, currently not enabled
+
+ Exec Solver = never
+ ! Exec Solver = "After Timestep"
+  Equation =  String "Free Surface Evolution"
+  Variable = "FS"
+  Variable DOFs = 1
+
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Nonlinear System Max Iterations = 2
+  Nonlinear System Min Iterations = 2
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.0
+
+  Apply Dirichlet = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = MUMPS
+!  Linear System Direct Method = "UMFPack"
+!  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations  = 1000
+  Linear System Preconditioning = ILU1
+  Linear System Convergence Tolerance = 1.0e-08
+  Optimize Bandwidth = Logical False
+  Steady State Convergence Tolerance = 1.0e-4
+  ! switch that off in parallel runs, as it may introduce 
+  ! partition dependent relaxation factors:
+  ! Maximum Displacement = Real 10.0
+  Stabilization Method = Stabilized
+ 
+  Flow Solution Name = String "Flow Solution"
+ 
+  Exported Variable 1 =  FS Residual
+  Exported Variable 1 DOFS = 1
+  Exported Variable 2 = ReferenceFS
+  Exported Variable 2 DOFS = 1
+End
+
+Solver 13
+
+! solver to deform the mesh. currently disabled
+
+  Equation = "Mesh Update"
+!  Exec Solver = "Before TimeStep"
+
+  Exec Solver = "never"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 500
+!  Linear System Direct Method = Mumps
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-6
+  Steady State Convergence Tolerance = 1.0e-04
+  Linear System Residual Output = 1
+  Optimize Bandwidth = Logical False
+End
+
+!Solver 14
+!  Equation = "SaveMaterials"
+!  Exec Solver = After TimeStep
+!  Procedure = File "SaveData" "SaveMaterials"
+!  Parameter 1 =  String "Viscosity"
+!  Parameter 2 =  String "Sliding"
+!End
+
+Solver 14
+
+ ! solver for surface mass balance. According to Gladstone et al., this is the 1990s average surface mass balance, computed using the HIRHAM climate model.
+
+  Equation = Reader
+  Procedure = "./GridDataReader" "GridDataReader"
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "HIRHAM_smb_mean.nc"
+
+  Time Dim Name = String "T"
+  X Dim Name = String "X"
+  Y Dim Name = String "Y"
+
+  Time Var Name = String "time"
+  X Var Name = String "x_utm"
+  Y Var Name = String "y_utm"
+
+  !--- Interpolation variables
+  X Epsilon = Real 1.0e-2
+  Y Epsilon = Real 1.0e-2
+  Epsilon Time = Real 0.01
+
+  Interpolation Bias = Real 0.0
+  Interpolation Multiplier = Real 1.0
+
+  ! see GetTimePoint in GridDataReader for meaning of time params
+  Is Time Counter = Logical False
+  Is Time Index = Logical True
+  Time Point = Real 1.0
+
+  Variable 1 = smb
+
+  Enable Scaling = Logical False
+End
+
+
+Solver 15
+! solver to output parameters
+
+  Exec Solver = String "after timestep"	
+  Equation = String "ResultOutput"
+  Procedure = File "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = File $name"."
+  Output Format = String "vtu"
+  Vtu Format = Logical True
+End
+
+!Solver 17
+!  Equation = "SaveMaterials_dubble"
+!  Procedure = File "SaveData" "SaveMaterials"
+!End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+! solvers for the glacier
+  Active Solvers(10) = 1 2 3 4 5 10 11 13 14 15
+End
+
+Equation 2
+! solvers for the bed
+  Active Solvers(1) =  9 !17
+End
+
+Equation 3
+! solvers for the free surface
+  Active Solvers(4) =  6 7 8 12
+  Flow Solution Name = String "Flow Solution"
+  Convection = Computed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! lateral side of the glacier 
+Boundary Condition 1
+  Name = "sides"
+  Target Boundaries = 1
+
+  External Pressure = Variable Coordinate 3
+        Real MATC "-1.0*waterpressure(tx)*1.0E-06"
+
+  Save Scalars = logical true
+
+!  Mesh Update 1 = Real 0.0
+ ! Mesh Update 2 = Real 0.0
+
+
+! added temperature
+
+  Temp = Real 268.0
+
+End
+
+!  Bedrock 
+Boundary Condition 2
+  Bottom Surface = Equals "BedDEM"  
+  Target Boundaries = 2 
+ Body Id = 2
+
+  Save Line = Logical True  
+
+  Save Scalars = logical true
+
+  Flow Force BC = Logical True
+
+  Normal-Tangential Velocity = Logical True
+  Normal-Tangential VeloD = Logical True
+
+  Velocity 1 = Real 0.0e0
+  
+!  Slip Coefficient 2  = Variable Beta
+!  Real  MATC "10^tx(0)"
+
+  Slip Coefficient 2 = Real 0.1
+
+!  Slip Coefficient 3  = Variable Beta
+!  Real  MATC "10^tx(0)"
+ 
+  Slip Coefficient 3 = Real 0.1
+ 
+  Height = Real 0.0
+
+ ! Mesh Update 1 = Real 0.0
+ ! Mesh Update 2 = Real 0.0
+  !Mesh Update 3 = Real 0.0
+End
+
+! Upper Surface
+Boundary Condition 3
+
+  Top Surface =  Variable Time, ZsDEM, BedDEM, FS
+   Real Procedure  "linkZsGreen_newData" "linkZsGreen_newData" 
+!Equals "ZsDEM"
+  Target Boundaries = 3
+ 
+  Save Scalars = logical true
+
+  Save Line = Logical True
+
+  Body Id = 3
+  Depth = Real 0.0
+
+! added temperature
+
+Temp = Real 273.0
+
+!  Mesh Update 1 = Real 0.0
+!  Mesh Update 2 = Real 0.0
+ ! Mesh Update 3 = Variable FS, ReferenceFS
+ !   Real MATC "tx(0) - tx(1)"
+
+End
