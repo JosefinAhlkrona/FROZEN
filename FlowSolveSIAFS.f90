@@ -152,8 +152,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
   INTEGER, SAVE :: numberofiter, FirstReorder
 
-  REAL(KIND=dp), POINTER :: xx(:),yy(:),SiaNodes(:)
-  TYPE(Matrix_t), POINTER :: ss, BigMatrix
+  REAL(KIND=dp), POINTER :: xx(:),yy(:),SiaNodes(:),xfs(:)
+  TYPE(Matrix_t), POINTER :: ss, BigMatrix,afs
   REAL(KIND=dp) :: nrm
   INTEGER, POINTER :: pp(:), FSPermPointer(:)
 
@@ -798,6 +798,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   END IF
 
 
+  ActiveInThisTimeStep=100
   IF (GetNOFActive() .EQ. 0) THEN
      ActiveInThisTimeStep=0
 
@@ -1582,7 +1583,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            END DO
 
 
-           WRITE( Message, * ) 'Allocating A_FS and A_Coupling' 
+           WRITE( Message, * ) 'Allocating A_FS and A_Coupling to size ', NSDOFs*AFSrow, ' and 0' 
            CALL Info( 'FlowSolve',Message, Level=4 )
            !---------Allocate A_FS--------------------------------------------------------------------
 
@@ -1592,8 +1593,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
            ALLOCATE(A_FS % RHS(NSDOFs*AFSrow)); A_FS % RHS=0._dp
 
-           WRITE( Message, * ) 'Allocating A_Coupling' 
-           CALL Info( 'FlowSolve',Message, Level=4 )
            !---------Allocate A_Coupling, needed to transfer information from the SIA to FS area-----------------------------------------------
 
            A_Coupling => AllocateMatrix()
@@ -1606,8 +1605,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         !----------Fill in matrix A_FS and A_Coupling
         WRITE( Message, * ) 'Filling in A_FS and A_Coupling' 
         CALL Info( 'FlowSolve',Message, Level=4 )
-
-
 
         SIAVelPermuted=0.0
         k_i=0
@@ -1626,21 +1623,33 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            SIAVelPermuted(NSDOFs*(i-1)+k_i)=SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i);
         END DO
 
-           IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 2) THEN !Full Stokes row
+           IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 2) THEN !Full Stokes row      
+
               !Counter for FS blocks
               AFSrow = AFSrow + 1
               FSPerm(ProperNodes(InvPerm(i)))=AFSrow
 
 
               DO k_i=1,NSDOFs
+
                  i_jos=NSDOFs*(i-1)+k_i  !Row in big matrix
+! WRITE(*,*) 'heh14b'
+!WRITE(*,*) 'SIZE(A_FS % RHS)=',  SIZE(A_FS % RHS)
+!WRITE(*,*) 'SIZE(A % RHS)=', SIZE(A % RHS)
+!WRITE(*,*) 'i_jos=', i_jos
+!WRITE(*,*) 'NSDOFs*(AFSrow-1)+k_i', NSDOFs*(AFSrow-1)+k_i
+
+
+
                  A_FS % RHS(NSDOFs*(AFSrow-1)+k_i) = A % RHS(i_jos)
+
                  !Loop over columns
 
                  DO j_jos=A % Rows(i_jos),A % Rows(i_jos+1)-1 !loop over columns in row in big matrice
 
                     j=(A % Cols(j_jos)-1)/NSDOFs+1  !Blocknumber of big matrice (divide into u,v,p blocks by integer division)
                     IF (NodeType2(ProperNodes(InvPerm(j))) == 2)  THEN !A_FS
+
 
                        k_j=MOD(A % cols(j_jos),NSDOFs) !where in block
                        IF (k_j == 0) k_j=NSDOFs 
@@ -1730,6 +1739,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         WRITE( Message, * ) 'Processor no ', ParEnv % MyPE, ' says: Solving small FS-system' 
         CALL Info( 'FlowSolve',Message, Level=4 )
 
+        !afs => A_FS
+        !xfs => x_FS
+
         pp => Solver % Variable % Perm
         ss => Solver % Matrix
         Solver % Matrix => A_FS 
@@ -1737,7 +1749,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         xx => Solver % Variable % Values
         Solver % Variable % Values => x_FS
 
+!----------------------------------------------------------------------------------
         IF (ParEnv % PEs>1) THEN
+
            A % Comm = MPI_COMM_WORLD
            IF(.NOT.ASSOCIATED(A % ParMatrix)) THEN              
 
@@ -1745,10 +1759,10 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
               FSPerm=0
               DO i = 1, SIZE(FlowPerm) !SIZE(FlowSolution)/NSDOFs
                  IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 1) THEN !SIA
-                 ELSE
+                 ELSE !FS
                     j=j+1
-                    FSPerm(i)=j
-                    !     Solver % Variable % Perm(i)=j
+                    FSPerm(i)=FlowPerm(j)
+                   !      Solver % Variable % Perm(i)=j
                  END IF
               END DO
 
@@ -1762,15 +1776,22 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
            END IF !not associiated parmatrix
         END IF !parallel run
+!-----------------------------------------------------------------------------------
+
 
         Solver % Variable  % Values=0._dp
 
-        nrm = DefaultSolve() !Valgrind complains unless back rotatesystem = false when sliding
+
+        nrm = DefaultSolve() !Valgrind complains unless back rotatesystem = false when sliding    !A_FS is deallocated
+
+        !A_FS => afs
 
         Solver % Matrix => ss
         A => Solver % Matrix
         Solver % Variable % Perm => pp
         Solver % Variable % Values => xx 
+
+
 
         !Glue solution together with SIA-solution
         WRITE( Message, * ) 'Glue FS-solution and SIA-solution together' 
@@ -1794,6 +1815,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         gluetime=CPUTime()-gluetime
 
      ELSE IF (.NOT. CouplApprox) THEN
+        WRITE(*,*) 'not doing error estimation'
         UNorm = DefaultSolve() !UNorm
      ELSE IF (DoingErrorEstimation) THEN 
 
@@ -1916,9 +1938,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
      atmean=atmean+at
      stmean=stmean+st
-     gluetimemean=gluetimemean+gluetime          
-
-  END DO  ! of nonlinear iteration
+     gluetimemean=gluetimemean+gluetime     
+ 
+  END DO    !end of nonlinear iteration
 
   IF (CouplApprox .AND. DoingErrorEstimation) THEN 
      aterror=at
@@ -1952,15 +1974,20 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         END SELECT
 
         !deallocate stuff you used
-        DEALLOCATE(x_FS,STAT=istat)
+!WRITE(*,*) '-------'
+DEALLOCATE(x_FS,STAT=istat)
+!WRITE(*,*) 'ActiveIn
+ThisTimestep=',ActiveInThisTimeStep
+!WRITE(*,*) 'AFSrow',AFSrow
+
         IF(ActiveInThisTimeStep.NE.0) THEN
 
-       !    IF (AFSrow >0) THEN
+           IF (AFSrow >0) THEN
               DEALLOCATE(A_FS % Rows)
               DEALLOCATE(A_FS % Values)
               DEALLOCATE(A_FS % Cols)
               DEALLOCATE(A_FS)
-        !   END IF
+           END IF
 
            DEALLOCATE(A_Coupling % Rows)
            DEALLOCATE(A_Coupling % Values)
