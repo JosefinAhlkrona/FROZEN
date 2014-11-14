@@ -1976,8 +1976,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         !deallocate stuff you used
 !WRITE(*,*) '-------'
 DEALLOCATE(x_FS,STAT=istat)
-!WRITE(*,*) 'ActiveIn
-ThisTimestep=',ActiveInThisTimeStep
 !WRITE(*,*) 'AFSrow',AFSrow
 
         IF(ActiveInThisTimeStep.NE.0) THEN
