@@ -143,7 +143,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
        ElementsInRow_A_FS(:), InvPerm(:), ProperNodes(:), InvPermFS(:), &
        FSElements(:), SIAElements(:), CouplingElements(:), BlockOrderAllToSplit(:), &
        ElementsInRow_A_Coupling(:), AssembleElements(:),OldActiveElements(:), &
-       ElementApproximation(:), FSPerm(:)
+       ElementApproximation(:), FSPerm(:),PFSPerm(:)
 
   REAL(KIND=dp) :: at,at0,at1,totat,st,totst,CPUTime,RealTime
   REAL(KIND=dp) :: errortime, setupsys, totaltime, sorttime,gluetime
@@ -157,7 +157,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   REAL(KIND=dp) :: nrm
   INTEGER, POINTER :: pp(:), FSPermPointer(:)
 
-  TARGET :: x_FS, FSPerm
+  TARGET :: x_FS, FSPerm, PFSPerm
 
   SAVE U,V,W,MASS,STIFF,LoadVector,Viscosity, TimeForce,FORCE,ElementNodes,  &
        Alpha,Beta,ExtPressure,Pressure,PrevPressure, PrevDensity,Density,       &
@@ -1633,13 +1633,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
               DO k_i=1,NSDOFs
 
                  i_jos=NSDOFs*(i-1)+k_i  !Row in big matrix
-! WRITE(*,*) 'heh14b'
-!WRITE(*,*) 'SIZE(A_FS % RHS)=',  SIZE(A_FS % RHS)
-!WRITE(*,*) 'SIZE(A % RHS)=', SIZE(A % RHS)
-!WRITE(*,*) 'i_jos=', i_jos
-!WRITE(*,*) 'NSDOFs*(AFSrow-1)+k_i', NSDOFs*(AFSrow-1)+k_i
-
-
 
                  A_FS % RHS(NSDOFs*(AFSrow-1)+k_i) = A % RHS(i_jos)
 
@@ -1677,8 +1670,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            CALL AddToMatrixElement(A_Coupling,i,i,0._dp) !fill in diagonal
         END DO
 
-
-
         IF(Iter==1 .AND. REALLOCATE_Josefin) THEN
            CALL List_toCRSMatrix(A_Coupling)
            CALL List_toCRSMatrix(A_FS)        !valgrind complains when sliding
@@ -1688,8 +1679,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            ALLOCATE(yy(size(xx)))
            yy=0.0
         END IF
-
-        !     
+    
         !Setting SIA solution as a dirichlet condition for the FS-area.
 
         IF ( ParEnv % PEs > 1 ) THEN ! we have a parallel run
@@ -1725,7 +1715,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         setupsys=CPUTime()-setupsys
 
      END IF !Coupling approx .AND. .NOT. DoingErrorEstimation
-
+ WRITE( Message, * ) 'Processor no ', ParEnv % MyPE
      !------------------------------------------------------------------------------
      !     Solve the system and check for convergence
      !------------------------------------------------------------------------------
@@ -1749,30 +1739,27 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         xx => Solver % Variable % Values
         Solver % Variable % Values => x_FS
 
-!----------------------------------------------------------------------------------
         IF (ParEnv % PEs>1) THEN
 
            A % Comm = MPI_COMM_WORLD
            IF(.NOT.ASSOCIATED(A % ParMatrix)) THEN              
 
+             ALLOCATE(PFSPerm(SIZE(pp)),STAT=istat)
               j=0
-              FSPerm=0
-              DO i = 1, SIZE(FlowPerm) !SIZE(FlowSolution)/NSDOFs
+              PFSPerm=0
+              DO i = 1, SIZE(FlowSolution)/NSDOFs !go through all rows in matrix
                  IF (NodeType2(ProperNodes(InvPerm(i))) .EQ. 1) THEN !SIA
-                 ELSE !FS
+                 ELSE !if that row belong to a fs node
                     j=j+1
-                    FSPerm(i)=FlowPerm(j)
-                   !      Solver % Variable % Perm(i)=j
+                    PFSPerm(ProperNodes(InvPerm(i)))=j
                  END IF
               END DO
 
-              FSPermPointer => FSPerm
-
+              FSPermPointer => PFSPerm
+             
               CALL ParallelInitMatrix(Solver,A,FSPermPointer)
-              !CALL ParallelInitMatrix(Solver,A)
 
-              !DEALLOCATE(FSPerm)              
-              !DEALLOCATE(Solver % Variable % Perm)
+              DEALLOCATE(PFSPerm)     
 
            END IF !not associiated parmatrix
         END IF !parallel run
@@ -1780,18 +1767,12 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
 
         Solver % Variable  % Values=0._dp
-
-
         nrm = DefaultSolve() !Valgrind complains unless back rotatesystem = false when sliding    !A_FS is deallocated
-
-        !A_FS => afs
 
         Solver % Matrix => ss
         A => Solver % Matrix
         Solver % Variable % Perm => pp
         Solver % Variable % Values => xx 
-
-
 
         !Glue solution together with SIA-solution
         WRITE( Message, * ) 'Glue FS-solution and SIA-solution together' 
@@ -1815,7 +1796,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         gluetime=CPUTime()-gluetime
 
      ELSE IF (.NOT. CouplApprox) THEN
-        WRITE(*,*) 'not doing error estimation'
         UNorm = DefaultSolve() !UNorm
      ELSE IF (DoingErrorEstimation) THEN 
 
@@ -1974,9 +1954,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         END SELECT
 
         !deallocate stuff you used
-!WRITE(*,*) '-------'
 DEALLOCATE(x_FS,STAT=istat)
-!WRITE(*,*) 'AFSrow',AFSrow
 
         IF(ActiveInThisTimeStep.NE.0) THEN
 
