@@ -1,6 +1,11 @@
 MODULE ErrorEstimationSubs
+     USE SparIterSolve
+     USE ParallelUtils
 
 CONTAINS
+
+
+
 
   SUBROUTINE SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
        NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
@@ -387,7 +392,7 @@ CONTAINS
     !Get the functional  
     SELECT CASE(FunctionalName)
     CASE('flux across point') 
-       CALL FluxThroughLine( Model,Solver,dt,TransientSimulation, &
+       CALL FluxAcrossPoint( Model,Solver,dt,TransientSimulation, &
             functionalpointer)!  1.0_dp
     CASE DEFAULT
        Call FATAL('Error Estimation', 'No valid functional chosen')
@@ -866,7 +871,7 @@ CONTAINS
     !Get the functional  
     SELECT CASE(FunctionalName)
     CASE('flux across point') 
-       CALL FluxThroughLine( Model,Solver,dt,TransientSimulation, &
+       CALL FluxAcrossPoint( Model,Solver,dt,TransientSimulation, &
             functionalpointer)!  1.0_dp
     CASE DEFAULT
        Call FATAL('Error Estimation', 'No valid functional chosen')
@@ -935,5 +940,7 @@ CONTAINS
     close(201)  
 
   END SUBROUTINE SaveErrorMeasures
+
+
 
 END MODULE ErrorEstimationSubs

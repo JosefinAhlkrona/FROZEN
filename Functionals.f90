@@ -2,7 +2,7 @@ MODULE Functionals
 
 CONTAINS
 
-  SUBROUTINE FluxThroughLine ( Model,Solver,dt,TransientSimulation, &
+  SUBROUTINE FluxAcrossPoint ( Model,Solver,dt,TransientSimulation, &
        a  )
     !******************************************************************************
     !
@@ -125,6 +125,7 @@ CONTAINS
     dx = (Coord(i) - Coord(DownPointer(i)))
     a(3*(FlowPerm(i)-1)+1)= 0.5*dx
 
-  END SUBROUTINE FluxThroughLine
+  END SUBROUTINE FluxAcrossPoint
+
 
 END MODULE Functionals
