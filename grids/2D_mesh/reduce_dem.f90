@@ -137,5 +137,19 @@ program reduce_dem
 	close(unit=60)
 
 
+	if(dx==dy) THEN
+
+		open(unit=80, file="elevation_parameters", access="sequential", form="formatted", status="replace")
+		write(80,*) trim(adjustl(output_dem))
+		write(80,*) nint(min_output_x)
+		write(80,*) nint(min_output_y)
+		write(80,*) nint(dx)
+		write(80,*) end_x_counter - start_x_counter+ 1
+		write(80,*) end_y_counter - start_y_counter + 1
+
+
+		close(unit=80)
+	endif
+
 
 end program reduce_dem
