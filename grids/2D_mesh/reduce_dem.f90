@@ -70,10 +70,12 @@ program reduce_dem
 
 	! find the range of interest
 
-	min_output_x = floor((min_contour_x-x_offset) / real(dx)) * dx + x_offset
-	min_output_y = floor((min_contour_y-y_offset) / real(dy)) * dy + y_offset
-	max_output_x = ceiling((max_contour_x-x_offset) / real(dx)) * dx + x_offset
-	max_output_y = ceiling((max_contour_y-y_offset) / real(dy)) * dy + y_offset
+	! add a bit of padding so that bicubic interpolation doesn't screw up
+
+	min_output_x = floor((min_contour_x-x_offset) / real(dx)) * dx + x_offset - 5.*dx
+	min_output_y = floor((min_contour_y-y_offset) / real(dy)) * dy + y_offset- 5.*dy
+	max_output_x = ceiling((max_contour_x-x_offset) / real(dx)) * dx + x_offset + 5.*dx
+	max_output_y = ceiling((max_contour_y-y_offset) / real(dy)) * dy + y_offset + 5.*dy
 
 
 !	write(6,*) min_contour_x, min_output_x, int(min_contour_x / real(dx)), dx
