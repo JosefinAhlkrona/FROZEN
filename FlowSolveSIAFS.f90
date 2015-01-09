@@ -929,9 +929,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      bf_id   = -1
      body_id = -1
 
-      open(unit=111, file='viskositet.txt',STATUS='REPLACE')
-      open(unit=100, file='viskositetelement.txt',STATUS='REPLACE')
-
 
      CALL StartAdvanceOutput( 'FlowSolve', 'Assembly: ' )
 
@@ -2031,76 +2028,6 @@ fredag=0.0
         END SELECT
   END IF
 END IF
-
-  open(unit=112, file='vx.txt', STATUS='REPLACE')
-  open(unit=113, file='vy.txt',STATUS='REPLACE')
-  open(unit=118, file='x.txt',STATUS='REPLACE')
-  open(unit=121, file='z.txt',STATUS='REPLACE')
-  IF (DIM==3) THEN
-  open(unit=140, file='y.txt',STATUS='REPLACE')
-  open(unit=141, file='vz.txt',STATUS='REPLACE')
-  END IF
-
-
-  DO i=1,CurrentModel % Mesh % NumberOfNodes
-     WRITE(112,*) FlowSolution(NSDOFs*(FlowPerm(i)-1)+1)
-     WRITE(113,*) FlowSolution(NSDOFs*(FlowPerm(i)-1)+2)
-     WRITE(118,*) Solver % Mesh % Nodes % x(i)
-     WRITE(121,*) Solver % Mesh % Nodes % y(i)
-  IF (DIM==3) THEN
-     WRITE(140,*) Solver % Mesh % Nodes % z(i)
-     WRITE(141,*) FlowSolution(NSDOFs*(FlowPerm(i)-1)+3)
-  END IF
-  END DO
-
- IF (DIM==3) THEN
-close(140)
-close(141)
-END IF
-  close(112)
-  close(113)
-  close(118)
-  close(121)
-
-  IF (CouplApprox) THEN
-     open(unit=114, file='yy.txt',STATUS='REPLACE')
-     open(unit=117, file='nodetype.txt',STATUS='REPLACE')
-     open(unit=115, file='vxsia.txt',STATUS='REPLACE')
-     open(unit=116, file='vysia.txt',STATUS='REPLACE')
-     IF (DIM==3) THEN
-        open(unit=131, file='vzsia.txt',STATUS='REPLACE')
-     END IF
-
-     DO i=1,CurrentModel % Mesh % NumberOfNodes
-        WRITE(115,*) SIAVel(NSDOFs*(SIAPerm(i)-1)+1)
-        WRITE(116,*) SIAVel(NSDOFs*(SIAPerm(i)-1)+2)
-        IF (DIM==3) THEN
-           WRITE(131,*) SIAVel(NSDOFs*(SIAPerm(i)-1)+3)
-        END IF
-        IF (DIM==2) THEN
-        WRITE(114,*) yy(NSDOFs*(FlowPerm(i)-1)+1)+yy(NSDOFs*(FlowPerm(i)-1)+2)+yy(NSDOFs*(FlowPerm(i)-1)+3)
-        ELSE
- WRITE(114,*) yy(NSDOFs*(FlowPerm(i)-1)+1)+yy(NSDOFs*(FlowPerm(i)-1)+2)+yy(NSDOFs*(FlowPerm(i)-1)+3)+yy(NSDOFs*(FlowPerm(i)-1)+4)
-        END IF
-        WRITE(117,*) NodeType2(i)
-     END DO
-
-   IF (DIM==3) THEN
-        close(131)
-     END IF
-     close(114)
-     close(115)
-     close(116)
-     close(117) 
-
- !IF (Timestep==2) THEN
- ! DO i = 1, SIZE(FlowSolution)/NSDOFs
- !    DO k_i=1,NSDOFs
- !       SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i)=yy(NSDOFs*(i-1)+k_i)
- !    END DO
- ! END DO
- !END IF
-     END IF
 
   IF (CouplApprox .AND. DoingErrorEstimation) THEN 
 
