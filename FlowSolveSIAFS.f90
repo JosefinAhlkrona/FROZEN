@@ -4,7 +4,7 @@
 ! *
 ! *  Copyright 1st Apsril 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free sosftware; you can redistribute it and/or
+! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
 ! *  of the License, or (at your option) any later version.
@@ -42,7 +42,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   !
   !******************************************************************************
 
-  USE NavierStokes
+  USE NavierStokes2
   USE NavierStokesGeneral
   USE NavierStokesCylindrical
 
@@ -87,8 +87,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
   INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat, i_jos,j_jos,k_jos, NumberOfFSNodes, &
        NumberOfSIANodes, ElementsInA_FS, NodeSum, NOFCouplingElements, &
-       ElementsInA_Coupling, r_jos,  OriginalNOFActiveElements, OrigNOFRows, &
-       fredag
+       ElementsInA_Coupling, r_jos,  OriginalNOFActiveElements, OrigNOFRows
 
   INTEGER :: AFScol, AFSrow, ASIArow, k_i, k_j, ACounter
 
@@ -100,7 +99,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
        Tdiff,s,Relaxation,NewtonTol,NonlinearTol, &
        ReferencePressure=0.0, SpecificHeatRatio, &
        PseudoCompressibilityScale=1.0, NonlinearRelax,FreeSTol, Norm, &
-       PrevNorm, testnorm,fsnorm,sianorm,prevfsnorm,prevsianorm
+       PrevNorm, testnorm,fsnorm,sianorm,prevfsnorm,prevsianorm,hej, &
+       fredag
+
 
   INTEGER :: NSDOFs,NewtonIter,NonlinearIter,FreeSIter, &
        NOFSIAElements,NOFFSElements,NOFAssembleElements, &
@@ -369,6 +370,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
 
      N = Solver % Mesh % MaxElementDOFs
+     WRITE(*,*) 'N=',N
 
      IF( AllocationsDone ) THEN
         DEALLOCATE(                               &
@@ -928,6 +930,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      bf_id   = -1
      body_id = -1
 
+      open(unit=111, file='viskositet.txt',STATUS='REPLACE')
+      open(unit=100, file='viskositetelement.txt',STATUS='REPLACE')
+
 
      CALL StartAdvanceOutput( 'FlowSolve', 'Assembly: ' )
 
@@ -1308,6 +1313,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         !------------------------------------------------------------------------------
         !        Get element local stiffness & mass matrices
         !------------------------------------------------------------------------------
+
         SELECT CASE(Coordinates)
         CASE( Cartesian )
            !------------------------------------------------------------------------------
@@ -1317,7 +1323,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
               !------------------------------------------------------------------------------
               ! Density needed for steady-state, also pressure for transient
               !------------------------------------------------------------------------------
-              CALL NavierStokesCompose( &
+!WRITE(*,*) 'outside=',MAXVAL(STIFF)
+ CALL NavierStokesCompose( &
                    MASS,STIFF,FORCE, LoadVector, &
                    Viscosity,Density,U,V,W,MU,MV,MW, &
                    ReferencePressure+Pressure(1:n), &
@@ -1329,6 +1336,10 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
                    MagneticForce, Rotating, AngularVelocity, &
                    DivDiscretization, GradPDiscretization, NewtonLinearization, &
                    Element,n,ElementNodes)
+
+
+
+
               !------------------------------------------------------------------------------
            END SELECT
            !------------------------------------------------------------------------------
@@ -1356,7 +1367,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            !------------------------------------------------------------------------------
         CASE DEFAULT
            !------------------------------------------------------------------------------
-
            CALL NavierStokesGeneralCompose( &
                 MASS,STIFF,FORCE, &
                 LoadVector, Viscosity,Density,U,V,W,MU,MV,MW,Stabilize, &
@@ -1364,6 +1374,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
            !------------------------------------------------------------------------------
         END SELECT
+
+
         !------------------------------------------------------------------------------
         !        If time dependent simulation, add mass matrix to global 
         !        matrix and global RHS vector
@@ -1554,6 +1566,8 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         END IF
      END DO
      !------------------------------------------------------------------------------
+      close(111)
+      close(100)
 
      !
      ! IMPLEMENT NOSLIP WALL BC CODE:
@@ -1668,7 +1682,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         ASIArow=0
         AFScol=0
         FSPerm=0
-fredag=0
+fredag=0.0
 
         DO i=1,A % NumberOfRows/NSDOFs !Loop over u,v,p blocks in matrix
 
@@ -1714,10 +1728,14 @@ fredag=0
  !                      ELSE
                        CALL SetMatrixElement(A_Coupling,i_jos, &
                             A % Cols(j_jos), A % Values(j_jos))
-                       !WRITE(*,*)'varde=', A % Values(j_jos)
+                       !WRITE(*,*)'varde=', A % Values(j_jos), 'i=',ProperNodes(InvPerm(j)), 'j=',ProperNodes(InvPerm(j))
+                       if (A % Values(j_jos)>fredag) THEN
+                          fredag = A % Values(j_jos)
+                       WRITE(*,*)'varde=', A % Values(j_jos), 'i=',ProperNodes(InvPerm(i)), 'j=',ProperNodes(InvPerm(j))
+                          END IF
                        !WRITE(*,*) 'k_i=',k_i
     !                   END IF
-                           fredag=fredag+1
+                       fredag=fredag+1
                   
 
                     END IF
@@ -2017,16 +2035,75 @@ fredag=0
         CASE ('solution')
            CALL SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
-          FlowSolution=CoupledSolution
+        !  FlowSolution=CoupledSolution
         CASE ('functional')
            CALL FunctionalErrorEstimate( Model,Solver,dt,TransientSimulation, &
                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
         END SELECT
   END IF
+END IF
+WRITE(*,*) 'garn'
+
+  open(unit=112, file='vx.txt', STATUS='REPLACE')
+  open(unit=113, file='vy.txt',STATUS='REPLACE')
+  open(unit=118, file='x.txt',STATUS='REPLACE')
+  open(unit=121, file='z.txt',STATUS='REPLACE')
+  IF (DIM==3) THEN
+  open(unit=140, file='y.txt',STATUS='REPLACE')
+  open(unit=141, file='vz.txt',STATUS='REPLACE')
+  END IF
 
 
+  DO i=1,CurrentModel % Mesh % NumberOfNodes
+     WRITE(112,*) FlowSolution(NSDOFs*(FlowPerm(i)-1)+1)
+     WRITE(113,*) FlowSolution(NSDOFs*(FlowPerm(i)-1)+2)
+     WRITE(118,*) Solver % Mesh % Nodes % x(i)
+     WRITE(121,*) Solver % Mesh % Nodes % y(i)
+  IF (DIM==3) THEN
+     WRITE(140,*) Solver % Mesh % Nodes % z(i)
+     WRITE(141,*) FlowSolution(NSDOFs*(FlowPerm(i)-1)+3)
+  END IF
+  END DO
+
+ IF (DIM==3) THEN
+close(140)
+close(141)
+END IF
+  close(112)
+  close(113)
+  close(118)
+  close(121)
 
   IF (CouplApprox) THEN
+     open(unit=114, file='yy.txt',STATUS='REPLACE')
+     open(unit=117, file='nodetype.txt',STATUS='REPLACE')
+     open(unit=115, file='vxsia.txt',STATUS='REPLACE')
+     open(unit=116, file='vysia.txt',STATUS='REPLACE')
+     IF (DIM==3) THEN
+        open(unit=131, file='vzsia.txt',STATUS='REPLACE')
+     END IF
+
+     DO i=1,CurrentModel % Mesh % NumberOfNodes
+        WRITE(115,*) SIAVel(NSDOFs*(SIAPerm(i)-1)+1)
+        WRITE(116,*) SIAVel(NSDOFs*(SIAPerm(i)-1)+2)
+        IF (DIM==3) THEN
+           WRITE(131,*) SIAVel(NSDOFs*(SIAPerm(i)-1)+3)
+        END IF
+        IF (DIM==2) THEN
+        WRITE(114,*) yy(NSDOFs*(FlowPerm(i)-1)+1)+yy(NSDOFs*(FlowPerm(i)-1)+2)+yy(NSDOFs*(FlowPerm(i)-1)+3)
+        ELSE
+ WRITE(114,*) yy(NSDOFs*(FlowPerm(i)-1)+1)+yy(NSDOFs*(FlowPerm(i)-1)+2)+yy(NSDOFs*(FlowPerm(i)-1)+3)+yy(NSDOFs*(FlowPerm(i)-1)+4)
+        END IF
+        WRITE(117,*) NodeType2(i)
+     END DO
+
+   IF (DIM==3) THEN
+        close(131)
+     END IF
+     close(114)
+     close(115)
+     close(116)
+     close(117) 
 
  !IF (Timestep==2) THEN
  ! DO i = 1, SIZE(FlowSolution)/NSDOFs
@@ -2035,37 +2112,31 @@ fredag=0
  !    END DO
  ! END DO
  !END IF
+     END IF
 
-        !deallocate stuff you used
-DEALLOCATE(x_FS,STAT=istat)
-DEALLOCATE(xSIA,STAT=istat)
+  IF (CouplApprox .AND. DoingErrorEstimation) THEN 
 
+     !deallocate stuff you used
+     DEALLOCATE(x_FS,STAT=istat)
+     DEALLOCATE(xSIA,STAT=istat)
 
-
-
-        IF(ActiveInThisTimeStep.NE.0) THEN
-
-           IF (AFSrow >0) THEN
-              DEALLOCATE(A_FS % Rows)
-              DEALLOCATE(A_FS % Values)
-              DEALLOCATE(A_FS % Cols)
-              DEALLOCATE(A_FS)
-           END IF
-
-           DEALLOCATE(A_Coupling % Rows)
-           DEALLOCATE(A_Coupling % Values)
-           DEALLOCATE(A_Coupling % Cols)
-           DEALLOCATE(A_Coupling)
-
-           DEALLOCATE(yy)
-
+     IF(ActiveInThisTimeStep.NE.0) THEN
+        IF (AFSrow >0) THEN
+           DEALLOCATE(A_FS % Rows)
+           DEALLOCATE(A_FS % Values)
+           DEALLOCATE(A_FS % Cols)
+           DEALLOCATE(A_FS)
         END IF
+        DEALLOCATE(A_Coupling % Rows)
+        DEALLOCATE(A_Coupling % Values)
+        DEALLOCATE(A_Coupling % Cols)
+        DEALLOCATE(A_Coupling)
+        DEALLOCATE(yy)
+     END IF
 
-        errortime=CPUTime()-errortime
+     errortime=CPUTime()-errortime
 
-     END IF !Error estimation
-
-  END IF !Coupl approx
+END IF !Coupl approx
 
   CALL ListAddConstReal( Solver % Values, &
        'Nonlinear System Relaxation Factor', NonlinearRelax )
@@ -2115,7 +2186,7 @@ DEALLOCATE(xSIA,STAT=istat)
      WRITE(134,*) '                                                               '
 
      close(134)  
-  END IF
+  END IF !timestuff
 
   ErrorStuff = GetLogical( Solver % Values, 'Save Error Data', gotIt ) 
 
@@ -2123,7 +2194,7 @@ DEALLOCATE(xSIA,STAT=istat)
  !    CALL SaveErrorMeasures(Model,Solver,dt,TransientSimulation, &
  !         SIAVelPermuted)
  ! END IF
-
+ 
 CONTAINS
   !------------------------------------------------------------------------------
 
