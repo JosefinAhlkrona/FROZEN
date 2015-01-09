@@ -329,12 +329,6 @@ MODULE NavierStokes2
      MassMatrix  = 0._dp
      StiffMatrix = 0._dp
 
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!WRITE(*,*) '----1-----'
-!WRITE(*,*) 'Max stiffmatrix=', MAXVAL(StiffMatrix)
-!!WRITE(*,*) 'Max A=', MAXVAL(A)
-!END IF
-
      IF ( NewtonLinearization ) JacM = 0._dp
 !------------------------------------------------------------------------------
 !    Integration stuff
@@ -771,14 +765,6 @@ MODULE NavierStokes2
         END DO
       END IF
 
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!WRITE(*,*) '----2-----'
-!WRITE(*,*) 'Max stiffmatrix=', MAXVAL(StiffMatrix)
-!!WRITE(*,*) 'Max A=', MAXVAL(A)
-!END IF
-!#ifdef LES
-!#define LSDelta (SQRT(2.0d0)*Element % hK)
-!#define LSGamma 6
 
 !------------------------------------------------------------------------------
 !    Loop over basis functions (of both unknowns and weights)
@@ -810,14 +796,7 @@ MODULE NavierStokes2
          M => MassMatrix ( i+1:i+c,j+1:j+c )
          A => StiffMatrix( i+1:i+c,j+1:j+c )
 
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!IF (p==8 .AND. q==8) THEN
-!WRITE(*,*) '----3-----'
-!WRITE(*,*) 'p=',p,'q=',q,'i=',i,'j=',j, 't=', t
-!!WRITE(*,*) 'Max stiffma=', MAXVAL(StiffMatrix)
-!WRITE(*,*) 'Max A=', MAXVAL(A)
-!END IF
-!END IF
+
 
          IF ( ViscNewtonLin ) Jac => JacM( i+1:i+c,j+1:j+c )
 !------------------------------------------------------------------------------
@@ -841,10 +820,7 @@ MODULE NavierStokes2
 !------------------------------------------------------------------------------
 !      Stiffness matrix:
 !------------------------------
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!WRITE(*,*) '----1-----'
-!WRITE(*,*) 'StiffMatrix=',A
-!END IF
+
 ! Rotating coordinates
 !------------------------------------------------------------------------------
        IF( Rotating ) THEN
@@ -895,33 +871,18 @@ MODULE NavierStokes2
            END DO
          END DO
        END IF
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!WRITE(*,*) '----2-----'
-!WRITE(*,*) 'StiffMatrix=',A
-!END IF
 
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!IF (p==8 .AND. q==8) THEN
-!WRITE(*,*) '----3.1-----'
-!WRITE(*,*) 'p=',p,'q=',q,'i=',i,'j=',j, 't=', t
-!!WRITE(*,*) 'Max stiffma=', MAXVAL(StiffMatrix)
-!WRITE(*,*) 'Max A=', MAXVAL(A)
-!END IF
-!END IF
 
        DO i=1,dim
          DO j = 1,dim
-!WRITE(*,*) 'p=',p,'q=',q,'i=',i,'j=',j, 't=', t
 
            IF ( Isotropic ) THEN
              A(i,i) = A(i,i) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
-            ! WRITE(*,*) 'isotropic a(i,i)=', A(i,i)
              IF ( divDiscretization ) THEN
                 A(i,j) = A(i,j) + s * mu * dBasisdx(q,j) * dBasisdx(p,i)
              ELSE IF (.NOT.LaplaceDiscretization) THEN
                 A(i,j) = A(i,j) + s * mu * dBasisdx(q,i) * dBasisdx(p,j)
              END IF
-             !WRITE(*,*) 'a(i,j)=', A(i,j)
 
 !------------------------------------------------------------------------------
 !  For compressible flow add grad((2/3) \mu div(u))
@@ -934,7 +895,6 @@ MODULE NavierStokes2
 
            IF ( Convect ) THEN
               A(i,i) = A(i,i) + s * rho * dBasisdx(q,j) * Velo(j) * Basis(p)
-             !WRITE(*,*) 'convect a(i,i)=', A(i,i)
 
            END IF
          END DO
@@ -946,9 +906,6 @@ MODULE NavierStokes2
             A(i,c) = A(i,c) + s * dBasisdx(q,i) * Basis(p)
          ELSE
             A(i,c) = A(i,c) - s * Basis(q) * dBasisdx(p,i)
-            !WRITE(*,*) 'pressure a(i,c)=', A(i,c)
-            !WRITE(*,*) 'pressure a(i,c) addition=', s * Basis(q) * dBasisdx(p,i)
-
          END IF
 
          ! Continuity equation:
@@ -962,18 +919,10 @@ MODULE NavierStokes2
 
            ELSE !wera re here
              A(c,i) = A(c,i) + s * dBasisdx(q,i) * BaseP
-            !WRITE(*,*) 'not compressible or convect  a(c,i)=', A(c,i)
-            !WRITE(*,*) 's=',s
-            !WRITE(*,*) 'dBasisdx(q,i)=',dBasisdx(q,i)
-            !WRITE(*,*) 'BaseP=',BaseP
-            !WRITE(*,*) 'rho=',rho
-            !WRITE(*,*) 'a(c,i) addition ', s * dBasisdx(q,i) * BaseP
 
            END IF
-!WRITE(*,*) 'cmodel=',Cmodel
            SELECT CASE(Cmodel)
            CASE(PerfectGas1)
-              !write(*,*) 'perfect gas'
              A(c,i) = A(c,i) + s * ( rho / Pressure ) * &
                  Basis(q) * dPressuredx(i) * BaseP / 2
 
@@ -984,34 +933,19 @@ MODULE NavierStokes2
                  Basis(q) * dTemperaturedx(i) *  BaseP
 
            CASE(UserDefined1, Thermal)             
-! write(*,*) 'userdefined, therma'
              A(c,i) = A(c,i) + s * drhodx(i) * Basis(q) * BaseP
 
            CASE(UserDefined2)
-! write(*,*) 'userdefined2'
-
              A(c,c) = A(c,c) + s * drhodp*dBasisdx(q,i)*Velo(i)*BaseP/2
              A(c,i) = A(c,i) + s * drhodp*dPressuredx(i)*Basis(q)*BaseP/2
            END SELECT
          END IF
        END DO
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!IF (p==8 .AND. q==8) THEN
-!WRITE(*,*) '----4-----'
-!WRITE(*,*) 'p=',p,'q=',q,'i=',i,'j=',j, 't=', t
-!WRITE(*,*) 'Max stiffma=', MAXVAL(StiffMatrix)
-!WRITE(*,*) 'A=', A
-!END IF
-!END IF
-!!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!!WRITE(*,*) '----3-----'
-!!WRITE(*,*) 'StiffMatrix=',A
-!!END IF
+
 !------------------------------------------------------------------------------
 !      Artificial Compressibility, affects only the continuity equation
 !------------------------------------------------------------------------------  
        IF (PseudoCompressible) THEN
-!write(*,*) 'presudocompresible'
           A(c,c) = A(c,c) + s * Compress * Basis(q) * BaseP
        END IF
 
@@ -1025,15 +959,11 @@ MODULE NavierStokes2
            END DO
          END DO
        END IF
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!WRITE(*,*) '----4-----'
-!WRITE(*,*) 'StiffMatrix=',A
-!END IF
+F
 !------------------------------------------------------------------------------
 !      Add stabilization...
 !------------------------------------------------------------------------------
        IF ( Stabilize ) THEN 
-        !  write(*,*) 'A before=',A
 
           DO i=1,dim
              DO j=1,c
@@ -1046,13 +976,7 @@ MODULE NavierStokes2
           END DO  
 
           A = A + s*Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
-        !  write(*,*) 'Delta=',Delta
-        ! write(*,*) 'Tau=', Tau
-        ! write(*,*) 'hK=', hK
-        !  write(*,*) 'mK=',mK
-        !  write(*,*) 'mu=',mu
-        !  WRITE(*,*) 'stabilization=',  s*Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
-        !  WRITE(*,*) 'nodes=', Element % NodeIndexes
+      
         
        ELSE IF ( Vms ) THEN
           DO i=1,dim
@@ -1113,10 +1037,7 @@ MODULE NavierStokes2
        END IF
      END DO
      END DO
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!WRITE(*,*) '----5-----'
-!WRITE(*,*) 'StiffMatrix=',A
-!END IF
+
 !------------------------------------------------------------------------------
 !    The righthand side...
 !------------------------------------------------------------------------------
@@ -1161,7 +1082,6 @@ MODULE NavierStokes2
          DO i=1,DIM
            DO j=1,c
              Load(j) = Load(j) + s * Tau * rho * Force(i) * SW(p,j,i)
-           !  WRITE(*,*) 'load stab ',j,' =',  s * Tau * rho * Force(i) * SW(p,j,i)
            END DO
          END DO
        ELSE IF ( Vms ) THEN
@@ -1212,21 +1132,6 @@ MODULE NavierStokes2
         StiffMatrix( c*i, c*i ) = 1._dp
      END DO
    END IF
-
-!IF (ANY(Element % Nodeindexes == 941) .OR. ANY(Element % Nodeindexes ==1206)) THEN
-!WRITE(*,*) '---------'
-!WRITE(*,*) 'nodes =', Element % NodeIndexes 
-!WRITE(*,*) ' '
-!WRITE(*,*) 'StiffMatrix=',A
-!WRITE(*,*) ' '
-!WRITE(*,*) 'NBasis=',NBasis, 'N_Integ',N_Integ
-!WRITE(*,*) 'Size MASS=', SIZE(MassMatrix)
-!WRITE(*,*) 'size(stiff=)',SIZE(StiffMatrix)
-!!WRITE(*,*) '*****'
-!WRITE(*,*) 'max massmatrix=',MAXVAL(MassMatrix)
-!WRITE(*,*) 'max stiffmatrix=',MAXVAL(StiffMatrix)
-!!WRITE(*,*) '*****'
-!END IF
 
 !------------------------------------------------------------------------------
  END SUBROUTINE NavierStokesCompose

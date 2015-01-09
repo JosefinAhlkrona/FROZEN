@@ -370,7 +370,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
 
      N = Solver % Mesh % MaxElementDOFs
-     WRITE(*,*) 'N=',N
 
      IF( AllocationsDone ) THEN
         DEALLOCATE(                               &
@@ -1323,7 +1322,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
               !------------------------------------------------------------------------------
               ! Density needed for steady-state, also pressure for transient
               !------------------------------------------------------------------------------
-!WRITE(*,*) 'outside=',MAXVAL(STIFF)
  CALL NavierStokesCompose( &
                    MASS,STIFF,FORCE, LoadVector, &
                    Viscosity,Density,U,V,W,MU,MV,MW, &
@@ -1720,21 +1718,12 @@ fredag=0.0
 
                     ELSE IF (NodeType2(ProperNodes(InvPerm(j))) .EQ. 1)  THEN ! Coupling from SIA to FS
 
-                       !Add to A_coupling
-                     !  IF(k_i==3) THEN
-!CALL SetMatrixElement(A_Coupling,i_jos, &
-!                            A % Cols(j_jos), 0.0_dp)
-
- !                      ELSE
+                   
                        CALL SetMatrixElement(A_Coupling,i_jos, &
                             A % Cols(j_jos), A % Values(j_jos))
-                       !WRITE(*,*)'varde=', A % Values(j_jos), 'i=',ProperNodes(InvPerm(j)), 'j=',ProperNodes(InvPerm(j))
                        if (A % Values(j_jos)>fredag) THEN
                           fredag = A % Values(j_jos)
-                       WRITE(*,*)'varde=', A % Values(j_jos), 'i=',ProperNodes(InvPerm(i)), 'j=',ProperNodes(InvPerm(j))
                           END IF
-                       !WRITE(*,*) 'k_i=',k_i
-    !                   END IF
                        fredag=fredag+1
                   
 
@@ -2042,7 +2031,6 @@ fredag=0.0
         END SELECT
   END IF
 END IF
-WRITE(*,*) 'garn'
 
   open(unit=112, file='vx.txt', STATUS='REPLACE')
   open(unit=113, file='vy.txt',STATUS='REPLACE')
