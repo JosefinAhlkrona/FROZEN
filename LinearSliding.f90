@@ -64,13 +64,16 @@ SUBROUTINE LinearSliding( Beta1, Beta2, n1,n2,n3, txz,tyz, uB1,uB2,uB3)
 !WRITE(*,*) 'TauB_t1=', TauB_t1
 !WRITE(*,*) 'TauB_t2=', TauB_t2
 
-  uB_t1=TauB_t1/Beta1
-  uB_t2=TauB_t2/Beta2
+  uB_t1=-TauB_t1/Beta1
+  uB_t2=-TauB_t2/Beta2
 
   uB1=uB_t1*Tangent(1)+uB_t2*Tangent2(1)
   uB2=uB_t1*Tangent(2)+uB_t2*Tangent2(2)
   uB3=uB_t1*Tangent(3)+uB_t2*Tangent2(3)
 
+!WRITE(*,*) 'ub1=',uB1
+!WRITE(*,*) 'ub2=',uB2
+!WRITE(*,*) 'ub3=',uB3
 
   !------------------------------------------------------------------------------
 END SUBROUTINE LinearSliding
