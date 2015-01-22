@@ -1,6 +1,4 @@
 MODULE ErrorEstimationSubs
-     USE SparIterSolve
-     USE ParallelUtils
 
 CONTAINS
 
@@ -46,7 +44,7 @@ CONTAINS
     LOGICAL :: AllocationsDone = .FALSE.
     LOGICAL :: gotIt
 
-    REAL(KIND=dp),ALLOCATABLE :: ErrorInSIA(:), &
+    REAL(KIND=dp),ALLOCATABLE :: CoupledSolution(:), ErrorInSIA(:), &
          NodeWiseError(:)
     REAL(KIND=dp) :: UNorm
 
@@ -63,13 +61,13 @@ CONTAINS
     REAL(KIND=dp), SAVE :: ErrorBound,  LowerHorVelLimit, ErrorBoundAbs, ErrorBoundRel  
 
 
-    SAVE OnlyHorizontalError, &
+    SAVE OnlyHorizontalError, CoupledSolution, &
          ErrorInSIA, NodeWiseError
 
     !-----------------------------------------------------------------
 
     WRITE( Message, * ) 'Computing the Error'
-    CALL Info( 'Error Estimation', Message, Level=4 )
+    CALL Info( 'FlowSolve', Message, Level=4 )
 
     FlowSol => Solver % Variable
     NSDOFs         =  FlowSol % DOFs
@@ -176,34 +174,22 @@ CONTAINS
              END IF
 
           CASE(4) !3D simulation
-             NodeWiseError(k)=SQRT( &
-( &
-ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ &
-ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0 & 
-!+ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+3)**2.0  &
-) &
-                  /( &
-FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0+&
-FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0&
-!+FlowSolution(NSDOFs*(FlowPerm(k)-1)+3)**2.0 &
-)&
-)
 
-      !       IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit .AND. &
-      !            ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
-      !          NodeWiseError(k)=0.5*SQRT( (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
-      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))**2.0+ &
-      !               (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
-      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))**2.0 )  
-      !       ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit) THEN
-      !          NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
-      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))
-      !       ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
-      !          NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
-      !               /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))
-      !       ELSE
-      !          NodeWiseError(k)=0.0_dp
-      !       END IF
+             IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit .AND. &
+                  ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
+                NodeWiseError(k)=0.5*SQRT( (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
+                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))**2.0+ &
+                     (ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
+                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))**2.0 )  
+             ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))>LowerHorVelLimit) THEN
+                NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)&
+                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+1))
+             ELSE IF (ABS(FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))>LowerHorVelLimit) THEN
+                NodeWiseError(k)=ABS(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)&
+                     /FlowSolution(NSDOFs*(FlowPerm(k)-1)+2))
+             ELSE
+                NodeWiseError(k)=0.0_dp
+             END IF
 
              !Weighing absolute and relative error
              ErrorBound = MAXVAL((/ ErrorBoundAbs/SQRT(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 &
@@ -227,6 +213,9 @@ FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0&
 
        END DO
     END DO
+
+    !FlowSolution=CoupledSolution !necessary??
+
 
   END SUBROUTINE SolutionErrorEstimate
 
@@ -395,10 +384,7 @@ FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0&
     !Get the functional  
     SELECT CASE(FunctionalName)
     CASE('flux across point') 
-       CALL FluxAcrossPoint( Model,Solver,dt,TransientSimulation, &
-            functionalpointer)!  1.0_dp 
-    CASE('flux across line') 
-       CALL FluxAcrossLine( Model,Solver,dt,TransientSimulation, &
+       CALL FluxThroughLine( Model,Solver,dt,TransientSimulation, &
             functionalpointer)!  1.0_dp
     CASE DEFAULT
        Call FATAL('Error Estimation', 'No valid functional chosen')
@@ -614,7 +600,6 @@ FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0&
     FlowPerm       => FlowSol % Perm
     FlowSolution   => FlowSol % Values
     
-    A => Solver % Matrix
     !-----------------------------------------------------------------
     ! INITIALIZATIONS AND ALLOCATIONS
     !-----------------------------------------------------------------
@@ -871,16 +856,13 @@ FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0&
     !   Get the functional
     !-----------------------------------------------------------------------------
 
-    functional = 0.0 !a vector describing the functional  functional(x)=functional^T*x
+    functional = 0.0
     functionalpointer => functional
 
     !Get the functional  
     SELECT CASE(FunctionalName)
     CASE('flux across point') 
-       CALL FluxAcrossPoint( Model,Solver,dt,TransientSimulation, &
-            functionalpointer)!  1.0_dp
-    CASE('flux across line') 
-       CALL FluxAcrossLine( Model,Solver,dt,TransientSimulation, &
+       CALL FluxThroughLine( Model,Solver,dt,TransientSimulation, &
             functionalpointer)!  1.0_dp
     CASE DEFAULT
        Call FATAL('Error Estimation', 'No valid functional chosen')

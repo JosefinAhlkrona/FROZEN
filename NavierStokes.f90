@@ -40,7 +40,6 @@ MODULE NavierStokes2
 
   CONTAINS
 
-!-----
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RHS vector for Navier-Stokes-Equations
 !> in cartesian coordinates.
@@ -150,7 +149,7 @@ MODULE NavierStokes2
      REAL(KIND=dp) :: Lambda=1.0,Re,Tau,Delta,Re1,Re2,GasC, hScale
 
      REAL(KIND=dp) :: VNorm,hK,mK,mu,dmudx(3),Temperature, &
-               drhodp,drhodp_n(n),muserial
+               drhodp,drhodp_n(n)
 
      REAL(KIND=dp) :: drhodx(3), rho, Pressure, dTemperaturedx(3), &
                       dPressuredx(3),dPrevPressuredx(3), Compress, masscoeff
@@ -175,8 +174,6 @@ MODULE NavierStokes2
      REAL(KIND=dp), POINTER :: NodalC(:,:,:)
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
      TYPE(ValueList_t), POINTER :: Material, Params
-
-     REAL(KIND=dp):: Skalfaktor
 
      LOGICAL :: Found, Transient, stat, Bubbles, PBubbles, Stabilize, &
                 VMS, P2P1, Isotropic, drhodp_found, Compressible, ViscNewtonLin, &
@@ -214,7 +211,6 @@ MODULE NavierStokes2
      ForceVector = 0._dp
      MassMatrix  = 0._dp
      StiffMatrix = 0._dp
-
      IF ( NewtonLinearization ) JacM = 0._dp
 !------------------------------------------------------------------------------
 !    Integration stuff
@@ -498,6 +494,9 @@ MODULE NavierStokes2
         IF( ViscNonnewtonian ) THEN
           mu = EffectiveViscosity( mu, rho, Ux, Uy, Uz, &
               Element, Nodes, n, n, u, v, w,  muder0 )
+
+	write(*,*) 'mu=',mu
+
           ViscNewtonLin = NewtonLinearization .AND. muder0/=0._dp
           IF ( ViscNewtonLin )  Strain = (Grad+TRANSPOSE(Grad))/2
         END IF
@@ -524,16 +523,9 @@ MODULE NavierStokes2
  
            Tau = hK * Re / (2 * rho * VNorm)
            Delta = rho * Lambda * Re * hK * VNorm
-        ELSE  
-           Skalfaktor = GetConstReal( CurrentModel % Solver % Values,  &
-             'Stabilization Scaling Factor', Found )
-           IF (Found) THEN
-              ELSE
-           Skalfaktor=1500000.0
-           END IF
-           Delta = 0._dp 
-           Tau   = mK * (hK/Skalfaktor)**2  / ( 8 * mu )
-           !Tau   = mK * hK**2  / ( 8 * mu )
+        ELSE
+           Delta = 0._dp
+           Tau   = mK * hK**2  / ( 8 * mu )
         END IF
 !------------------------------------------------------------------------------
 !       SU will contain residual of ns-equations (except for the time derivative
@@ -655,6 +647,10 @@ MODULE NavierStokes2
       END IF
 
 
+!#ifdef LES
+!#define LSDelta (SQRT(2.0d0)*Element % hK)
+!#define LSGamma 6
+
 !------------------------------------------------------------------------------
 !    Loop over basis functions (of both unknowns and weights)
 !------------------------------------------------------------------------------
@@ -684,9 +680,6 @@ MODULE NavierStokes2
          j = c*(q-1)
          M => MassMatrix ( i+1:i+c,j+1:j+c )
          A => StiffMatrix( i+1:i+c,j+1:j+c )
-
-
-
          IF ( ViscNewtonLin ) Jac => JacM( i+1:i+c,j+1:j+c )
 !------------------------------------------------------------------------------
 !      First plain Navier-Stokes
@@ -709,7 +702,6 @@ MODULE NavierStokes2
 !------------------------------------------------------------------------------
 !      Stiffness matrix:
 !------------------------------
-
 ! Rotating coordinates
 !------------------------------------------------------------------------------
        IF( Rotating ) THEN
@@ -761,10 +753,8 @@ MODULE NavierStokes2
          END DO
        END IF
 
-
        DO i=1,dim
          DO j = 1,dim
-
            IF ( Isotropic ) THEN
              A(i,i) = A(i,i) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
              IF ( divDiscretization ) THEN
@@ -784,7 +774,6 @@ MODULE NavierStokes2
 
            IF ( Convect ) THEN
               A(i,i) = A(i,i) + s * rho * dBasisdx(q,j) * Velo(j) * Basis(p)
-
            END IF
          END DO
 !------------------------------------------------------------------------------
@@ -797,19 +786,18 @@ MODULE NavierStokes2
             A(i,c) = A(i,c) - s * Basis(q) * dBasisdx(p,i)
          END IF
 
+
          ! Continuity equation:
          !---------------------
          IF ( gradPDiscretization ) THEN
-           A(c,i) = A(c,i) - s * rho * Basis(q) * dBasisdx(p,i)             
-
+           A(c,i) = A(c,i) - s * rho * Basis(q) * dBasisdx(p,i)
          ELSE
            IF ( Compressible .OR. Convect ) THEN
              A(c,i) = A(c,i) + s * rho * dBasisdx(q,i) * BaseP
-
-           ELSE !wera re here
+           ELSE
              A(c,i) = A(c,i) + s * dBasisdx(q,i) * BaseP
-
            END IF
+
            SELECT CASE(Cmodel)
            CASE(PerfectGas1)
              A(c,i) = A(c,i) + s * ( rho / Pressure ) * &
@@ -821,7 +809,7 @@ MODULE NavierStokes2
              A(c,i) = A(c,i) - s * ( rho / Temperature ) * &
                  Basis(q) * dTemperaturedx(i) *  BaseP
 
-           CASE(UserDefined1, Thermal)             
+           CASE(UserDefined1, Thermal)
              A(c,i) = A(c,i) + s * drhodx(i) * Basis(q) * BaseP
 
            CASE(UserDefined2)
@@ -830,7 +818,6 @@ MODULE NavierStokes2
            END SELECT
          END IF
        END DO
-
 !------------------------------------------------------------------------------
 !      Artificial Compressibility, affects only the continuity equation
 !------------------------------------------------------------------------------  
@@ -853,7 +840,6 @@ MODULE NavierStokes2
 !      Add stabilization...
 !------------------------------------------------------------------------------
        IF ( Stabilize ) THEN 
-       !I'm introducing a tau_z here
           DO i=1,dim
              DO j=1,c
                M(j,i) = M(j,i) + s * Tau * rho * Basis(q) * SW(p,j,i)
@@ -862,44 +848,8 @@ MODULE NavierStokes2
              DO j=1,dim
                A(j,i) = A(j,i) + s * Delta * dBasisdx(q,i) * dBasisdx(p,j)
              END DO
-          END DO  
-
- ! WRITE(*,*) '----------'
-
-!WRITE(*,*) 'Tau =', Tau
-!WRITE(*,*) 'hk =', hk
-!WRITE(*,*) 'mu =', mu
-!WRITE(*,*) 'delta=', Delta
-
-
-
-  !WRITE(*,*) '   '
-  !        WRITE(*,*) 'M='
-  !        WRITE(*,*) M(1,:)
-  !        WRITE(*,*) M(2,:)
-  !        WRITE(*,*) M(3,:)
-  !        WRITE(*,*) M(4,:)
-  !WRITE(*,*) '   '
-
-   !       WRITE(*,*) 'A='
-   !       WRITE(*,*) A(1,:)
-   !       WRITE(*,*) A(2,:)
-   !       WRITE(*,*) A(3,:)
-   !       WRITE(*,*) A(4,:)
-
-  !WRITE(*,*) '   '
-
-
+          END DO
           A = A + s*Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
-         ! A = A + s*MATMUL(Tau,MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c)))
-
-   !               WRITE(*,*) 'A after='
-   !       WRITE(*,*) A(1,:)
-   !       WRITE(*,*) A(2,:)
-   !       WRITE(*,*) A(3,:)
-   !       WRITE(*,*) A(4,:)
- ! WRITE(*,*) '----------'
-
        ELSE IF ( Vms ) THEN
           DO i=1,dim
             ! (rho*u',grad(q))
@@ -1054,7 +1004,6 @@ MODULE NavierStokes2
         StiffMatrix( c*i, c*i ) = 1._dp
      END DO
    END IF
-
 !------------------------------------------------------------------------------
  END SUBROUTINE NavierStokesCompose
 !------------------------------------------------------------------------------
