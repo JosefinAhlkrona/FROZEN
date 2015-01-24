@@ -434,7 +434,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
           PotentialField( N ), PotentialCoefficient( N ), &
           LoadVector( 4,N ), Alpha( N ), Beta( N ), &
           NodeType2(  Model % Mesh % NumberOfNodes ), &
-          Change(  Model % Mesh % NumberOfNodes ), &
+          Change(  SIZE(FlowSolution) ), &
           SIAVelPermuted(  SIZE( FlowSolution )), & 
           InvPerm(  Model % Mesh % NumberOfNodes ), &
           RelativeErrorX( Model % Mesh % NumberOfNodes ), &
@@ -2021,7 +2021,7 @@ fredag=0.0
         CASE ('solution')
            CALL SolutionErrorEstimate( Model,Solver,dt,TransientSimulation, &
                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
-        !  FlowSolution=CoupledSolution
+          FlowSolution=CoupledSolution
         CASE ('functional')
            CALL FunctionalErrorEstimate( Model,Solver,dt,TransientSimulation, &
                 NodeType2, SIAVelPermuted, NumberOfSIANodes, NumberOfFSNodes)
