@@ -64,6 +64,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
    USE ModelDescription
    USE MeshUtils
    USE ParallelUtils
+   USE ParallelUtils2
    USE ParallelEigenSolve
    USE ListMatrix
    USE CRSMatrix
@@ -1808,12 +1809,12 @@ fredag=0.0
         xx => Solver % Variable % Values
         Solver % Variable % Values => x_FS
 
-        !IF (ParEnv % PEs>1) THEN
-        IF (1>5) THEN
+        IF (ParEnv % PEs>1) THEN
            A % Comm = MPI_COMM_WORLD
            IF(.NOT.ASSOCIATED(A % ParMatrix)) THEN              
+             
 
-             ALLOCATE(PFSPerm(SIZE(pp)),STAT=istat)
+             ALLOCATE(PFSPerm(SIZE(xx)),STAT=istat)
               j=0
               PFSPerm=0
               DO i = 1, SIZE(FlowSolution)/NSDOFs !go through all rows in matrix
@@ -1825,7 +1826,12 @@ fredag=0.0
               END DO
 
               FSPermPointer => PFSPerm
-              CALL ParallelInitMatrix(Solver,A,FSPermPointer)
+
+ WRITE(*,*) 'size(pfsperm)', SIZE(PFSPerm)
+ WRITE(*,*) 'size(FSPermPointer)', SIZE(FSPermPointer)
+
+              WRITE(*,*) 'size(matrix)', A % NumberOfRows
+              CALL ParallelInitMatrix2(Solver,A,FSPermPointer)
               DEALLOCATE(PFSPerm)     
 
            END IF !not associiated parmatrix
