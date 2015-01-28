@@ -148,9 +148,9 @@ CONTAINS
     DivisionMethod  = GetString( Solver % Values, &
          'Approximation Level Determination', gotIt ) 
     IF (.NOT. gotIt) THEN
-       WRITE( Message, * ) 'Dividing approximation levels according to sort method'
+       WRITE( Message, * ) 'Dividing approximation levels according to tolerance method'
        CALL Info( 'FlowSolve', Message, Level=4 )
-       DivisionMethod = 'sorting'
+       DivisionMethod = 'tolerance'
     END IF
 
 
