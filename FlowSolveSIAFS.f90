@@ -667,7 +667,9 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      ELSE
         CALL Fatal( 'FlowSolve','SIA-solution not available, Aborting.' )
      END IF
-
+   WRITE(*,*) MAXVAL(SIAVel)
+   WRITE(*,*) MINVAL(SIAVel)
+ 
   END IF !CouplApprox .or. (siaasinital and timestep==1)
 
   IF (Timestep==1 .AND. CouplApprox) THEN !Sort nodes from input data
@@ -730,7 +732,6 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         END DO
      END DO
      SIAVelPermuted = FlowSolution
-
   END IF !siaasinital and timestep ==1
 
 
@@ -874,7 +875,7 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
            END DO
         END DO
         SIAVelPermuted = FlowSolution
-
+        WRITE(*,*) 'B'
      END IF !siaasinital and timestep ==1
 
      !Message about error estimation
@@ -1681,7 +1682,7 @@ fredag=0.0
 
         DO i=1,A % NumberOfRows/NSDOFs !Loop over u,v,p blocks in matrix
 
-!While i'm at it, I'll reorder SIAVel so it has the same permuation as Flowsolution
+       ! While i'm at it, I'll reorder SIAVel so it has the same permuation as Flowsolution
         DO k_i=1,NSDOFs
            SIAVelPermuted(NSDOFs*(i-1)+k_i)=SIAVel(NSDOFs*(SIAPerm(InvPerm(i))-1)+k_i);
         END DO
@@ -1734,6 +1735,7 @@ fredag=0.0
            END IF
         END DO
 
+!*
         DO i=1,A % NumberOfRows
            CALL AddToMatrixElement(A_Coupling,i,i,0._dp) !fill in diagonal
         END DO
@@ -1784,6 +1786,9 @@ fredag=0.0
         setupsys=CPUTime()-setupsys
 
      END IF !Coupling approx .AND. .NOT. DoingErrorEstimation
+
+
+
  WRITE( Message, * ) 'Processor no ', ParEnv % MyPE
      !------------------------------------------------------------------------------
      !     Solve the system and check for convergence
@@ -1860,8 +1865,6 @@ fredag=0.0
               END DO
            END IF
         END DO
-       
-
 
         gluetime=CPUTime()-gluetime
 
@@ -1878,6 +1881,7 @@ fredag=0.0
         END SELECT
 
      END IF !CouplApprox .AND. .NOT. DoingErrorEsimation
+
 
      st = CPUTIme()-st
      totat = totat + at
@@ -1919,12 +1923,16 @@ fredag=0.0
         
            PrevNorm = ComputeNorm(Solver,SIZE(FlowSolution),PreviousSolution)
            Norm = Solver % Variable % Norm! 
-         
+        
+  
            IF (PrevNorm+Norm /= 0.0d0) THEN
               !RelativeChange= 2.0d0 * ABS(PrevNorm-Norm) / (PrevNorm + Norm)
-              Change=FlowSolution-PreviousSolution
+
+              Change=FlowSolution-PreviousSolution ! something fishy happens here, ssome memory problem
+
               testnorm=ComputeNorm(Solver,SIZE(FlowSolution),Change)
               RelativeChange=2.0*testnorm/(PrevNorm+Norm)
+  
            ELSE
               RelativeChange= 0.0d0
            END IF               
@@ -1995,8 +2003,6 @@ fredag=0.0
      END IF
 
      !------------------------------------------------------------------------------
-
-   
  
   END DO    !end of nonlinear iteration
 
@@ -2014,6 +2020,14 @@ fredag=0.0
 
         errortime=CPUTime()
 
+
+
+     !DO i = 1, SIZE(FlowSolution)/NSDOFs !goes through rows in flowsolution
+     !    WRITE(*,*) 'solution outside=',i,': ', SQRT(FlowSolution(NSDOFs*(FlowPerm(i)-1)+1)**2.0+&
+!FlowSolution(NSDOFs*(FlowPerm(i)-1)+2)**2.0)
+!        END DO
+
+
         SELECT CASE(ErrorEstimationMethod)
         CASE('residual')
            CALL ResidualEstimate( Model,Solver,dt,TransientSimulation, &
@@ -2028,6 +2042,7 @@ fredag=0.0
         END SELECT
   END IF
 END IF
+
 
   IF (CouplApprox .AND. DoingErrorEstimation) THEN 
 
