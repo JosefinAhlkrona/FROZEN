@@ -1,4 +1,4 @@
-SUBROUTINE LinearSliding( Beta1, Beta2, n1,n2,n3, txz,tyz, uB1,uB2,uB3)
+SUBROUTINE LinearSliding( Beta1, Beta2, n1,n2,n3, txz,tyz,p, uB1,uB2,uB3)
 
  
   !------------------------------------------------------------------------------
@@ -12,7 +12,7 @@ SUBROUTINE LinearSliding( Beta1, Beta2, n1,n2,n3, txz,tyz, uB1,uB2,uB3)
 
   REAL(KIND=dp) ::  Beta1,Beta2 
   REAL(KIND=dp) :: n1,n2,n3
-  REAL(KIND=dp) :: txz,tyz
+  REAL(KIND=dp) :: txz,tyz,p
   REAL(KIND=dp) :: Tangent(3),Tangent2(3)
   REAL(KIND=dp) :: uB_t1,uB_t2,TauB_t1,TauB_t2
   REAL(KIND=dp), INTENT(OUT) :: uB1,uB2,uB3
@@ -55,11 +55,12 @@ SUBROUTINE LinearSliding( Beta1, Beta2, n1,n2,n3, txz,tyz, uB1,uB2,uB3)
 
 
 
-  TauB_t1 = Tangent(1)*n3*txz+Tangent(2)*n3*tyz+ &
-       Tangent(3)*n1*txz+ Tangent(3)*n2*tyz
+  TauB_t1 = Tangent(1)*(-n1*p+n3*txz)+Tangent(2)*(-n2*p+n3*tyz)+ &
+       Tangent(3)*(n1*txz+n2*tyz-n3*p)
 
-  TauB_t2 = Tangent2(1)*n3*txz+Tangent2(2)*n3*tyz+ &
-       Tangent2(3)*n1*txz+ Tangent2(3)*n2*tyz
+  TauB_t2 = Tangent2(1)*(-n1*p+n3*txz)+Tangent2(2)*(-n2*p+n3*tyz)+ &
+       Tangent2(3)*(n1*txz+n2*tyz-n3*p)
+
 
 !WRITE(*,*) 'TauB_t1=', TauB_t1
 !WRITE(*,*) 'TauB_t2=', TauB_t2

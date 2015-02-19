@@ -349,7 +349,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
      END IF
   ELSE
       WRITE( Message, * ) 'Bedrock data zero'
-     CALL Info('FlowSolve',Message,Level=4)
+     CALL Info('SIASolver',Message,Level=4)
   END IF
 
 
@@ -754,6 +754,8 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Add sliding and save the solution on the right variable
   !------------------------------------------------------------------------------
+  open(unit=119, file='dhdx.txt',STATUS='REPLACE')
+  open(unit=120, file='viskositetsia.txt',STATUS='REPLACE')
 
 
   IF (dim == 2) THEN
@@ -769,8 +771,18 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 1) = vx
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = dvxdx(i)!vy
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = SIApressure(i)
+
+           WRITE(119,*) SurfGrad1
+
+           Surf= Model % Nodes % y(TopPointer(i))
+           Position =  Model % Nodes % y(i)
+
+
+           WRITE(120,*) 1.0/(2.0*ArrheniusFactor(i)*(rho*g*(Surf - Position)*ABS(SurfGrad1))**2.0)
         END IF
      END DO
+
+
 
   ELSE IF (dim == 3) THEN
 
@@ -805,6 +817,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
               CALL LinearSliding( Slip1, Slip2, Normal(DIM*(NormalPerm(j)-1)+1), &
                    Normal(DIM*(NormalPerm(j)-1)+2),Normal(DIM*(NormalPerm(j)-1)+3), &
                    - rho*g*SurfGrad1*(Surf - Model % Nodes % z(j)), - rho*g*SurfGrad2*(Surf - Model % Nodes % z(j)), &
+   rho*g*(Surf - Model % Nodes % z(j)), &
                    uB1,uB2,uB3) 
            END IF !if at bottom
 
@@ -826,6 +839,12 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = vz
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 4) =  SIApressure(i)
 
+
+           Position =  Model % Nodes % z(i)
+
+           WRITE(120,*) 1.0/(2.0*ArrheniusFactor(i)*(rho*g*(Surf - Position)*SQRT(SurfGrad1**2.0+SurfGrad2**2.0))**2.0)
+
+
         END IF
      END DO
 
@@ -841,7 +860,12 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   WRITE(135,*) '***************************************************************'
   WRITE(135,*) '                                                               '
 
-  close(135)     
+  close(135)
+
+
+  close(119)
+close(120)
+
   !------------------------------------------------------------------------------
 END SUBROUTINE SIASolverJosefin2
 !------------------------------------------------------------------------------
