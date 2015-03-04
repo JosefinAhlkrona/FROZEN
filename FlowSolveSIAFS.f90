@@ -1,4 +1,3 @@
-!
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -1753,23 +1752,23 @@ fredag=0.0
 
         !Setting SIA solution as a dirichlet condition for the FS-area.
 
-        IF ( ParEnv % PEs > 1 ) THEN ! we have a parallel run
-           ss => A
-           Solver % Matrix => A_Coupling
-           A => Solver % Matrix
-           Solver % Matrix % Comm = MPI_COMM_WORLD
-           IF(.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A,FlowPerm)
+        !IF ( ParEnv % PEs > 1 ) THEN ! we have a parallel run
+        !   ss => A
+        !   Solver % Matrix => A_Coupling
+        !   A => Solver % Matrix
+        !   Solver % Matrix % Comm = MPI_COMM_WORLD
+        !   IF(.NOT.ASSOCIATED(A % ParMatrix)) CALL ParallelInitMatrix(Solver,A,FlowPerm)
 
-           CALL ParallelInitSolve(A_Coupling,SIAVelPermuted,yy,yy)
-           CALL ParallelMatrixVector( A_Coupling, SIAVelPermuted, yy, .TRUE. )
-           CALL ParallelSumVector(A_Coupling, yy)
+        !   CALL ParallelInitSolve(A_Coupling,SIAVelPermuted,yy,yy)
+        !   CALL ParallelMatrixVector( A_Coupling, SIAVelPermuted, yy, .TRUE. )
+        !   CALL ParallelSumVector(A_Coupling, yy)
 
-           Solver % Matrix => ss
-           A => Solver % Matrix
+        !   Solver % Matrix => ss
+        !   A => Solver % Matrix
 
-        ELSE ! serial run
+        !ELSE ! serial run
            CALL CRS_MatrixVectorMultiply(A_Coupling,SIAVelPermuted,yy)
-        END IF
+        !END IF
 
         !Including the coupling vector in the RHS of A_FS
         j=0
@@ -1828,7 +1827,7 @@ fredag=0.0
                     PFSPerm(ProperNodes(InvPerm(i)))=j
                  END IF
               END DO
-
+              
               FSPermPointer => PFSPerm
               CALL ParallelInitMatrix(Solver,A,FSPermPointer)
               DEALLOCATE(PFSPerm)     
