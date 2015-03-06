@@ -176,6 +176,8 @@ MODULE NavierStokes2
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
      TYPE(ValueList_t), POINTER :: Material, Params
 
+     REAL(KIND=dp):: Skalfaktor
+
      LOGICAL :: Found, Transient, stat, Bubbles, PBubbles, Stabilize, &
                 VMS, P2P1, Isotropic, drhodp_found, Compressible, ViscNewtonLin, &
                 ViscNonnewtonian, LaplaceDiscretization
@@ -522,9 +524,15 @@ MODULE NavierStokes2
  
            Tau = hK * Re / (2 * rho * VNorm)
            Delta = rho * Lambda * Re * hK * VNorm
-        ELSE
-           Delta = 0._dp
-           Tau   = mK * (hK/1500000.0)**2  / ( 8 * mu )
+        ELSE  
+           Skalfaktor = GetConstReal( CurrentModel % Solver % Values,  &
+             'Stabilization Scaling Factor', Found )
+           IF (Found) THEN
+              ELSE
+           Skalfaktor=1500000.0
+           END IF
+           Delta = 0._dp 
+           Tau   = mK * (hK/Skalfaktor)**2  / ( 8 * mu )
            !Tau   = mK * hK**2  / ( 8 * mu )
         END IF
 !------------------------------------------------------------------------------
