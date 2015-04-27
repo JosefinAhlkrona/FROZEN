@@ -208,6 +208,12 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
   TARGET :: functional
   SAVE functional, functionalpointer
 
+	! files for testing
+
+!	character(len=200), allocatable, dimension(:) :: test_files
+!	character(len=200) :: command_string
+!	integer :: test_counter, test_file_unit
+
   !------------------------------------------------------------------------------
 
   INTERFACE
@@ -240,6 +246,16 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
 
   END INTERFACE
   !------------------------------------------------------------------------------
+
+!	allocate(test_files(ParEnv % PEs))
+!
+!	do test_counter = 1,  ParEnv % PEs
+!
+!		write(test_files(test_counter),*) test_counter
+!
+!		test_files(test_counter) = "test_file." // adjustl(trim(test_files(test_counter)))
+!
+!	end do
 
   at=0
   st=0
@@ -493,6 +509,10 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
      IF ( ALLOCATED(pDensity0) ) pDensity0 = pDensity1
      SaveTimestep=Timestep
   END IF
+
+!	 write(command_string,*) "echo Memory at Timestep ", Timestep, ": $(free -m | awk '{if (NR == 3) print $3}') >> ",&
+! 		trim(adjustl(test_files(ParEnv % MyPE+1))) 
+!	  call execute_command_line(trim(adjustl(command_string)))
 
   !------------------------------------------------------------------------------
   !    Do some additional initialization, and go for it
@@ -1875,7 +1895,7 @@ fredag=0.0
         SELECT CASE(ErrorEstimationMethod)
         CASE('solution') 
            !Solve large system
-           CALL ParallelInitMatrix(Solver,Solver % Matrix)
+
            UNorm = DefaultSolve() 
         END SELECT
 
@@ -2045,23 +2065,23 @@ END IF
 
   IF (CouplApprox .AND. DoingErrorEstimation) THEN 
 
-     !deallocate stuff you used
-     DEALLOCATE(x_FS,STAT=istat)
-     DEALLOCATE(xSIA,STAT=istat)
+	!deallocate stuff you used
+	DEALLOCATE(x_FS,STAT=istat)
+	DEALLOCATE(xSIA,STAT=istat)
 
-     IF(ActiveInThisTimeStep.NE.0) THEN
-        IF (AFSrow >0) THEN
-           DEALLOCATE(A_FS % Rows)
-           DEALLOCATE(A_FS % Values)
-           DEALLOCATE(A_FS % Cols)
-           DEALLOCATE(A_FS)
-        END IF
-        DEALLOCATE(A_Coupling % Rows)
-        DEALLOCATE(A_Coupling % Values)
-        DEALLOCATE(A_Coupling % Cols)
-        DEALLOCATE(A_Coupling)
-        DEALLOCATE(yy)
-     END IF
+	if(associated(A_coupling))	THEN
+		call FreeMatrix(A_coupling)
+		nullify(A_coupling)
+	endif
+
+
+	if(associated(A_FS))	THEN
+		call FreeMatrix(A_FS)
+		nullify(A_FS)
+	endif
+
+	DEALLOCATE(yy)
+
 
      errortime=CPUTime()-errortime
 
@@ -2118,6 +2138,12 @@ END IF !Coupl approx
   END IF !timestuff
 
   ErrorStuff = GetLogical( Solver % Values, 'Save Error Data', gotIt ) 
+
+!	 write(command_string,*) "echo Memory at end of Flowsolve: $(free -m | awk '{if (NR == 3) print $3}') >> ",&
+! 		trim(adjustl(test_files(ParEnv % MyPE+1))) 
+!	  call execute_command_line(trim(adjustl(command_string)))
+!
+!	deallocate(test_files)
 
  ! IF (CouplApprox .AND. ErrorStuff) THEN
  !    CALL SaveErrorMeasures(Model,Solver,dt,TransientSimulation, &
