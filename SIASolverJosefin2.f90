@@ -304,7 +304,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
   GradGrad1Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 1 grad')
   IF  (ASSOCIATED(GradGrad1Sol)) THEN
      GradGradSurface1 => GradGrad1Sol % Values
-     GradGradSurface1Perm => Grad1Sol % Perm
+     GradGradSurface1Perm => GradGrad1Sol % Perm
   ELSE
      CALL FATAL(SolverName,'Could not find a variable >'//TRIM(SurfaceName)//' grad 1 grad<')
   END IF
@@ -313,7 +313,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
      GradGrad2Sol => VariableGet( Solver % Mesh % Variables, TRIM(SurfaceName)//' grad 2 grad')
      IF  (ASSOCIATED(GradGrad2Sol)) THEN
         GradGradSurface2 => GradGrad2Sol % Values
-        GradGradSurface2Perm => Grad2Sol % Perm
+        GradGradSurface2Perm => GradGrad2Sol % Perm
      ELSE
         CALL FATAL(SolverName,'Could not find a variable >'//TRIM(SurfaceName)//' grad 2 grad<')
      END IF
