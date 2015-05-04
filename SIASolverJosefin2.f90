@@ -183,6 +183,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
        LayerOfNode, Beta1Node, Beta2Node, Beta1,Beta2, Slip1, Slip2
 
 
+	SolverName = "SIA_Solver"
 
   siatime=CPUTime()
 
