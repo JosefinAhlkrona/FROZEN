@@ -770,7 +770,7 @@ SUBROUTINE SIASolverJosefin2( Model,Solver,dt,TransientSimulation )
            vy= -intdvxdx(i)
 
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 1) = vx
-           Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = dvxdx(i)!vy
+           Velocity ((DIM+1)*(VeloPerm(i)-1) + 2) = vy
            Velocity ((DIM+1)*(VeloPerm(i)-1) + 3) = SIApressure(i)
 
            WRITE(119,*) SurfGrad1
