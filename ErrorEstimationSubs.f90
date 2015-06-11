@@ -64,6 +64,11 @@ CONTAINS
     REAL(KIND=dp),ALLOCATABLE :: Bound(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: DivisionMethod
 
+    real(KIND=dp) :: FlowSolution_velocity, ErrorInSIA_magnitude, Base_Velocity_Cutoff
+    integer :: ExtrudeLevels, node_layer, nodes_per_layer, file_unit
+
+    logical :: LOGICAL, Include_z_velocity
+
     SAVE OnlyHorizontalError, ErrorInSIA, Bound
     !-----------------------------------------------------------------
 
@@ -126,20 +131,61 @@ CONTAINS
     NumberOfFSNodes=0
     NumberOfSIANodes=0
 
+
+
+
+
+  ! see whether or not the z velocity should be included in the error estimation
+
+   Include_z_velocity = GetLogical( Solver % Values, 'Z velocity Included ', gotIt )
+    IF (.NOT. gotIt) THEN
+      WRITE( Message, * ) 'Z velocity Included  not found, setting to false by default'
+      CALL Info( 'FlowSolve', Message, Level=4 )
+      Include_z_velocity = .false.
+    END IF
+
+   if(NSDOFs < 4 .and. Include_z_velocity) then
+      WRITE( Message, * ) 'Z velocity Included  was set to true, but there are fewer than 4 DOF'
+      CALL Info( 'FlowSolve', Message, Level=4 )
+      WRITE( Message, * ) 'Setting Z velocity Included  to false'
+      CALL Info( 'FlowSolve', Message, Level=4 )
+      Include_z_velocity = .false.
+   endif
+
+! determine the error for each node
     DO k = 1, Model % Mesh % NumberOfNodes
 
-       NodeWiseErrorValues(NodeWiseErrorPerm(k)) =SQRT( &
-            ( &
-            ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ &
-            (NSDOFs-3)*ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0 & 
-                                !+ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+3)**2.0  &
-            ) &
-            /( &
-            FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0+&
-            (NSDOFs-3)*FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0&
-                                !+FlowSolution(NSDOFs*(FlowPerm(k)-1)+3)**2.0 &
-            )&
-            )
+	  if (NSDOFs == 3 .or. NSDOFs == 4) THEN
+
+		if (Include_z_velocity) THEN
+			FlowSolution_velocity = sqrt(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+3)**2.0)
+
+			ErrorInSIA_magnitude = SQRT(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                              ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0 +  &
+                                              ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+3)**2.0  )
+
+		else
+			FlowSolution_velocity = sqrt(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0)
+
+
+
+			ErrorInSIA_magnitude = SQRT(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                              ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0  )
+		endif
+
+       	NodeWiseErrorValues(NodeWiseErrorPerm(k)) = ErrorInSIA_magnitude / FlowSolution_velocity
+
+	  else
+
+	    CALL Fatal( 'FlowSolveSIAFS','NODOFs is not 3 or 4' )
+	  endif	
+		
+
+
+
     END DO
 
 
@@ -178,18 +224,50 @@ CONTAINS
        DO k = 1, Model % Mesh % NumberOfNodes
 
           !Weighing absolute and relative error
-          Bound(k) = MAXVAL((/ErrorBoundAbs &
-               /SQRT(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0+&
-               (NSDOFs-3)*FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0), ErrorBoundRel/))
+
+	   if (NSDOFs == 3 .or. NSDOFs == 4) THEN
+
+		if (Include_z_velocity) THEN
+
+			FlowSolution_velocity = sqrt(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+3)**2.0)
+
+
+	      else
+			FlowSolution_velocity = sqrt(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0)
+
+		endif
+
+    		Bound(k) = MAXVAL((/ErrorBoundAbs / FlowSolution_velocity, ErrorBoundRel/))
+
+
+	   else
+
+	     CALL Fatal( 'FlowSolveSIAFS','NODOFs is not 3 or 4' )
+	   endif
+
        END DO
     CASE('sorting')
        Bound = ErrorBoundAbs
     END SELECT
 
-    CALL SortNodes(Model,Solver,NodeType2, NumberOfFSNodes, NumberOfSIANodes, &
- Bound,ErrorInSIA)
+    CALL SortNodes(Model,Solver,NodeType2, NumberOfFSNodes, NumberOfSIANodes, Bound, ErrorInSIA)
 
     NodeType2Values(NodeType2Perm)=REAL(NodeType2)
+
+
+	! not sure if this should be done
+       DEALLOCATE( &
+            ErrorInSIA, &   
+            Bound,&
+       STAT=istat)
+	AllocationsDone = .FALSE.
+	write(6,*) "******************************************"
+	write(6,*) "SolutionErrorEstimate deallocated:", istat
+	write(6,*) "******************************************"	
+
 
   END SUBROUTINE SolutionErrorEstimate
 
@@ -490,6 +568,21 @@ CONTAINS
 
     DEALLOCATE(AT % RHS)
     DEALLOCATE(AT) 
+
+    ! not sure if this should be done
+    AllocationsDone = .FALSE.
+    DEALLOCATE(                               &
+         NodeWiseError, x, &
+         functional, &
+         Ax, &
+         Bound, &
+         STAT=istat )
+
+	write(6,*) "******************************************"
+	write(6,*) "FunctionalErrorEstimate deallocated:", istat
+	write(6,*) "******************************************"	
+
+
   END SUBROUTINE FunctionalErrorEstimate
 
 
@@ -990,6 +1083,11 @@ CONTAINS
     LOGICAL :: BeenSet = .FALSE.
     CHARACTER(LEN=MAX_NAME_LEN) :: DivisionMethod
 
+
+    integer :: ExtrudeLevels, nodes_per_layer, node_layer
+    real(KIND=dp) :: FlowSolution_velocity, Base_Velocity_Cutoff
+    logical :: Include_z_velocity
+
     !-----------------------------------------------------------------
     FlowSol => Solver % Variable
     NSDOFs         =  FlowSol % DOFs
@@ -1012,16 +1110,70 @@ CONTAINS
        CALL Fatal( 'FlowSolveSIAFS','Cannot find variable <SIAError>' )
     END IF
 
+
+
+   ! get the number of extruded levels in the mesh
+
+    ExtrudeLevels = GetInteger(Model % Simulation,'Extruded Mesh Levels',gotIt)
+    nodes_per_layer = Model % Mesh % NumberOfNodes / ExtrudeLevels
+
+
+   ! get the basal velocity cutoff. Any node at the base of the ice sheet with a velocity that is 
+   ! higher than this will automatically be set to Full Stokes
+
+    Base_Velocity_Cutoff = GetConstReal( Solver % Values, 'Base Velocity Cutoff', gotIt )
+    IF (.NOT. gotIt) THEN
+      WRITE( Message, * ) 'Base Velocity Cutoff not found, setting to 100 m/yr'
+      CALL Info( 'FlowSolve', Message, Level=4 )
+      Base_Velocity_Cutoff = 100.
+    END IF
+
+
+  ! see whether or not the z velocity should be included in the error estimation
+
+   Include_z_velocity = GetLogical( Solver % Values, 'Z velocity Included ', gotIt )
+    IF (.NOT. gotIt) THEN
+      WRITE( Message, * ) 'Z velocity Included  not found, setting to false by default'
+      CALL Info( 'FlowSolve', Message, Level=4 )
+      Include_z_velocity = .false.
+    END IF
+
+   if(NSDOFs < 4 .and. Include_z_velocity) then
+      WRITE( Message, * ) 'Z velocity Included  was set to true, but there are fewer than 4 DOF'
+      CALL Info( 'FlowSolve', Message, Level=4 )
+      WRITE( Message, * ) 'Setting Z velocity Included  to false'
+      CALL Info( 'FlowSolve', Message, Level=4 )
+      Include_z_velocity = .false.
+   endif
+
     SELECT CASE(DivisionMethod)
 
     CASE('tolerance')
        DO k = 1, Model % Mesh % NumberOfNodes
 
-          !Weighing absolute and relative error
+		if (Include_z_velocity) THEN
+			FlowSolution_velocity = sqrt(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+3)**2.0)
 
-          IF (NodeWiseErrorValues(NodeWiseErrorPerm(k))> Bound(k)) THEN !FS-Node 
+
+		else
+			FlowSolution_velocity = sqrt(FlowSolution(NSDOFs*(FlowPerm(k)-1)+1)**2.0 + &
+                                               FlowSolution(NSDOFs*(FlowPerm(k)-1)+2)**2.0)
+
+		endif
+
+
+           node_layer = (k-1) / nodes_per_layer + 1
+
+
+          !Weighing absolute and relative error
+	    ! also FS if the base velocity is above the threshold. Needs to be included otherwise things get unstable.
+          IF (NodeWiseErrorValues(NodeWiseErrorPerm(k))> Bound(k) .or. &
+	      (FlowSolution_velocity > Base_Velocity_Cutoff .and. node_layer == 1)) THEN !FS-Node 
              NumberOfFSNodes=NumberOfFSNodes+1
              NodeType2(k) = 2
+
           ELSE    !SIA-Node
              NumberOfSIANodes=NumberOfSIANodes+1
              NodeType2(k) = 1
@@ -1046,7 +1198,16 @@ CONTAINS
 
        DO k = 1, Model % Mesh % NumberOfNodes
           IF (PRESENT(ErrorInSIA)) THEN
-             AbsError = SQRT(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0)
+
+		if( NSDOFs == 3) THEN
+
+             	AbsError = SQRT(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0)
+		elseif ( NSDOFs == 4) THEN
+             	AbsError = SQRT(ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+1)**2.0+ ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+2)**2.0 + &
+		                 ErrorInSIA(NSDOFs*(FlowPerm(k)-1)+3)**2.0)
+		else
+			CALL Fatal( 'FlowSolveSIAFS','NSDOFs not 3 or 4' )
+		endif
           ELSE
              AbsError=1.0 !just something that is bigger than zero
           END IF
