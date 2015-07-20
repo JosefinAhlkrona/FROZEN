@@ -10,7 +10,7 @@
 ! * version 2.1 of the License, or (at your option) any later version.
 ! *
 ! * This library is distributed in the hope that it will be useful,
-! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+! * but WITHOUT ANY WARRANTY; without even the implied warranty off
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
 ! * 
@@ -176,12 +176,19 @@ MODULE NavierStokes2
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
      TYPE(ValueList_t), POINTER :: Material, Params
 
-     REAL(KIND=dp):: Skalfaktor
-
      LOGICAL :: Found, Transient, stat, Bubbles, PBubbles, Stabilize, &
                 VMS, P2P1, Isotropic, drhodp_found, Compressible, ViscNewtonLin, &
                 ViscNonnewtonian, LaplaceDiscretization
-
+!------------------------------------------------------------------------------
+     REAL(KIND=dp):: Skalfaktor, alfabarthroughmu, TauOld
+     REAL(KIND=dp) :: JacTrans(3,3),JJT(3,3), ForceJac(4)  !jacobian of affine transformation, J, and J*J^T, and J*Force
+     LOGICAL(KIND=dp) :: AnisotropicStabilize, Skrivut, PressureStabilize, PoissonPressure
+     REAL(KIND=dp) :: SUnew(n,4,4),SWnew(n,4,4), LoadOld(4)
+     REAL(KIND=dp) :: Stabilityterm(4,4),Stabilitytermold(4,4),Aold(4,4),Anew(4,4), &
+	LocalA(4,4), Aunstable(4,4)
+      INTEGER :: hej     
+      REAL(KIND=dp), DIMENSION(:), POINTER :: X,Y,Z
+      REAL(KIND=dp) :: x0, y0, z0
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
@@ -189,6 +196,12 @@ MODULE NavierStokes2
 
      hScale = GetCReal( Params, 'H scale', Found )
      IF ( .NOT. Found )  hScale = 1._dp
+
+     AnisotropicStabilize=.FALSE.
+     Skrivut=.FALSE.
+     PressureStabilize=.TRUE.
+     PoissonPressure=.FALSE.
+!hej =30
 
 !#ifdef LES
 !     LESVar => VariableGet( CurrentModel % Variables, 'LES' )
@@ -276,6 +289,16 @@ MODULE NavierStokes2
        IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints2 )
      ELSE
        IntegStuff = GaussPoints( Element )
+     !  WRITE(*,*) 'numberofgaussianpoitns=', IntegStuff % n
+     !  WRITE(*,*) 'Element % TYPE % ElementCode  ',  Element % TYPE % ElementCode                      ! numeric code for element
+     !  WRITE(*,*) 'Element % TYPE % BasisFunctionDegree', Element % TYPE % BasisFunctionDegree
+     !  WRITE(*,*) 'Element % TYPE % NumberOfNodes', Element % TYPE % NumberOfNodes
+     !  WRITE(*,*) 'Element % TYPE % NumberOfFaces', Element % TYPE % NumberOfFaces
+     !  WRITE(*,*) 'Element % TYPE % DIMENSION', Element % TYPE % DIMENSION
+     !  WRITE(*,*) 'Element % TYPE % GaussPoints', Element % TYPE % GaussPoints
+     !  WRITE(*,*) 'Element % TYPE % GaussPoints2', Element % TYPE % GaussPoints2
+     !  WRITE(*,*) 'Element % TYPE % GaussPoints0', Element % TYPE % GaussPoints0
+     !  WRITE(*,*) 'Element % TYPE % StabilizationMK', Element % TYPE % StabilizationMK
      END IF
      U_Integ => IntegStuff % u
      V_Integ => IntegStuff % v
@@ -287,6 +310,12 @@ MODULE NavierStokes2
 !------------------------------------------------------------------------------
     
      hK = element % hK*hscale
+	!WRITE(*,*) 'hK before=', hK
+
+
+
+!WRITE(*,*)  'elemtype=',Element % TYPE % ElementCode 
+
      mK = element % StabilizationMK
 
      IF ( Stabilize ) THEN
@@ -298,6 +327,27 @@ MODULE NavierStokes2
          stat = ElementInfo( Element, Nodes, u,v,w, detJ, Basis, dBasisdx )
          dNodalBasisdx(1:n,p,:) = dBasisdx(1:n,:)
        END DO
+
+!!----
+     X => Nodes % x
+     Y => Nodes % y
+     Z => Nodes % z 
+
+
+	EdgeMap => LGetEdgeMap( Element % TYPE % ElementCode / 100)
+         hK = HUGE(1.0_dp)
+         DO i=1,SIZE(EdgeMap,1)
+           j=EdgeMap(i,1)
+           k=EdgeMap(i,2)
+           x0 = X(j) - X(k)
+           y0 = Y(j) - Y(k)
+           z0 = Z(j) - Z(k)
+          hk = MIN(hK, x0**2 + y0**2 + z0**2)
+         END DO 
+         hK = SQRT( hK )
+	!WRITE(*,*) 'hK after=', hK
+!!------
+
      ELSE IF  ( Vms ) THEN
       NodalVelo(1,1:n) = Ux(1:n)
       NodalVelo(2,1:n) = Uy(1:n)
@@ -347,6 +397,10 @@ MODULE NavierStokes2
 !------------------------------------------------------------------------------
 !   Now we start integrating
 !------------------------------------------------------------------------------
+
+Stabilityterm=0
+LocalA=0
+Aunstable=0
     DO t=1,N_Integ
 
       u = U_Integ(t)
@@ -512,6 +566,24 @@ MODULE NavierStokes2
 
 
       IF ( Stabilize ) THEN
+        IF (AnisotropicStabilize) THEN
+             CALL NodalFirstDerivatives( n, dLBasisdx, element, u, v, w)
+		JacTrans=0.0
+	     DO i=1,dim
+	       		JacTrans(1,i) = SUM( Nodes % x(1:n) * dLBasisdx(1:n,i) )
+	       		JacTrans(2,i) = SUM( Nodes % y(1:n) * dLBasisdx(1:n,i) )
+			IF (dim>2) THEN
+	       			JacTrans(3,i) = SUM( Nodes % z(1:n) * dLBasisdx(1:n,i) )
+			END IF
+	     END DO
+		JJT=MATMUL(JacTrans(1:dim,1:dim),TRANSPOSE(JacTrans(1:dim,1:dim)))
+
+             ! JacTrans=0.0
+             ! JacTrans(1,1)=hK
+             ! JacTrans(2,2)=hK
+             ! JacTrans(3,3)= 200
+	END IF
+
         DO i=1,3
           dmudx(i) = SUM( Nodalmu(1:n)*dBasisdx(1:n,i) )
         END DO
@@ -532,9 +604,28 @@ MODULE NavierStokes2
            Skalfaktor=1500000.0
            END IF
            Delta = 0._dp 
+          ! Tau   = 0.0
            Tau   = mK * (hK/Skalfaktor)**2  / ( 8 * mu )
+          ! Tau   = 10000000!0.05*(hK)**2 
+         !  WRITE(*,*) 'Tau=', Tau
+	 !  WRITE(*,*) 'mK=', mK
+	 !  WRITE(*,*) 'hK=', hK
+	 !  WRITE(*,*) 'mu=', mu
+
+           alfabarthroughmu=mK*(1/Skalfaktor**2)/(8 * mu)  !for anisotropic stabilization
+
+	   IF (AnisotropicStabilize) THEN
+		TauOld=Tau
+		Tau = alfabarthroughmu
+	   END IF
+
            !Tau   = mK * hK**2  / ( 8 * mu )
         END IF
+!WRITE(*,*) '------'
+!           WRITE(*,*) 'TAU=', Tau
+!           WRITE(*,*) 'mu=', mu
+!	   WRITE(*,*) 'rho=', rho
+!           WRITE(*,*) 'hK=', hK
 !------------------------------------------------------------------------------
 !       SU will contain residual of ns-equations (except for the time derivative
 !       and force terms). SW will contain the weight function values.
@@ -556,10 +647,12 @@ MODULE NavierStokes2
             END IF
 
             DO j=1,DIM
+             IF (.NOT. PressureStabilize) THEN
               SU(p,i,i) = SU(p,i,i) - dmudx(j) * dBasisdx(p,j)
               SU(p,i,j) = SU(p,i,j) - dmudx(j) * dBasisdx(p,i)
               SU(p,i,i) = SU(p,i,i) - mu * SUM(dNodalBasisdx(p,1:n,j)*dBasisdx(1:n,j))
               SU(p,i,j) = SU(p,i,j) - mu * SUM(dNodalBasisdx(p,1:n,i)*dBasisdx(1:n,j))
+	     END IF
             END DO
 
             IF ( Convect .AND. NewtonLinearization ) THEN
@@ -567,6 +660,11 @@ MODULE NavierStokes2
                 SU(p,i,j) = SU(p,i,j) + rho * Grad(i,j) * Basis(p)
               END DO
             END IF
+
+  !WRITE(*,*) 'SU(p,1,:)=', SU(p,1,:)
+  !WRITE(*,*) 'SU(p,2,:)=', SU(p,1,:)
+  !WRITE(*,*) 'SU(p,3,:)=', SU(p,1,:)
+  !WRITE(*,*) 'SU(p,4,:)=', SU(p,1,:)
 !
 !------------------------------------------------------------------------------
 
@@ -580,13 +678,73 @@ MODULE NavierStokes2
             END IF
 
             DO j=1,dim
-              SW(p,i,i) = SW(p,i,i) - dmudx(j) * dBasisdx(p,j)
-              SW(p,j,i) = SW(p,j,i) - dmudx(j) * dBasisdx(p,i)
-              SW(p,i,i) = SW(p,i,i) - mu * SUM(dNodalBasisdx(p,1:n,j)*dBasisdx(1:n,j))
-              SW(p,j,i) = SW(p,j,i) - mu * SUM(dNodalBasisdx(p,1:n,i)*dBasisdx(1:n,j))
+	      IF (.NOT. PressureStabilize) THEN
+		      SW(p,i,i) = SW(p,i,i) - dmudx(j) * dBasisdx(p,j)
+		      SW(p,j,i) = SW(p,j,i) - dmudx(j) * dBasisdx(p,i)
+		      SW(p,i,i) = SW(p,i,i) - mu * SUM(dNodalBasisdx(p,1:n,j)*dBasisdx(1:n,j))
+		      SW(p,j,i) = SW(p,j,i) - mu * SUM(dNodalBasisdx(p,1:n,i)*dBasisdx(1:n,j))
+	      END IF
             END DO
           END DO
-        END DO
+
+!WRITE(*,*) ' '
+!WRITE(*,*) 'SU'
+!WRITE(*,*) '-----'
+!WRITE(*,*) SU(p,1,:)
+!WRITE(*,*) SU(p,2,:)
+!WRITE(*,*) SU(p,3,:)
+!WRITE(*,*) SU(p,4,:)
+
+!WRITE(*,*) ' '
+!WRITE(*,*) 'SW'
+!WRITE(*,*) '-----'
+!WRITE(*,*) SW(p,1,:)
+!WRITE(*,*) SW(p,2,:)
+!WRITE(*,*) SW(p,3,:)
+!WRITE(*,*) SW(p,4,:)
+
+	IF (AnisotropicStabilize) THEN
+		SUnew(p,:,:)=SU(p,:,:)
+		SWnew(p,:,:)=SW(p,:,:)
+		DO j=1,c !go through every equation
+		   SUnew(p,1:dim,j)=MATMUL(JacTrans(1:dim,1:dim),SU(p,1:dim,j))
+		   !SUnew(p,1,j)=40000.0*SU(p,1,j)
+		   !SUnew(p,2,j)=40000.0*SU(p,2,j)
+		   !SUnew(p,3,j)=200.0*SU(p,3,j)
+		   !SWnew(p,j,1)=40000.0*SW(p,j,1)
+		   !SWnew(p,j,2)=40000.0*SW(p,j,2)
+		   !SWnew(p,j,3)=200.0*SW(p,j,3)
+
+		   SWnew(p,j,1:dim)=MATMUL(SW(p,j,1:dim),TRANSPOSE(JacTrans(1:dim,1:dim)))
+	
+		END DO
+	END IF
+
+        END DO !loop over p
+  ! WRITE(*,*) '-------------------------------------------'
+!	WRITE(*,*) 'JacTrans', JacTrans
+!	WRITE(*,*) 'c', c
+ !  WRITE(*,*) '-------------------------------------------'
+!	WRITE(*,*) 'SUnew(1,1,:)', SUnew(1,1,:)
+ !  WRITE(*,*) '-------------------------------------------'
+!	WRITE(*,*) 'SU(1,1,:)', SU(1,1,:)
+ !  WRITE(*,*) '-------------------------------------------'
+ !WRITE(*,*) 'SUnew(1,2,:)', SUnew(1,2,:)
+ !  WRITE(*,*) '-------------------------------------------'
+!WRITE(*,*) 'SU(1,2,:)', SU(1,2,:)
+ !  WRITE(*,*) '-------------------------------------------'
+
+ !WRITE(*,*) 'SUnew(1,3,:)', SUnew(1,3,:)
+ !  WRITE(*,*) '-------------------------------------------'
+!WRITE(*,*) 'SU(1,3,:)', SU(1,3,:)
+ !  WRITE(*,*) '-------------------------------------------'
+ !WRITE(*,*) 'SUnew(1,4,:)', SUnew(1,4,:)
+ !  WRITE(*,*) '-------------------------------------------'
+!WRITE(*,*) 'SU(1,4,:)', SU(1,4,:)
+ !  WRITE(*,*) '-------------------------------------------'
+
+
+
       ELSE IF ( Vms ) THEN
 
         mu = mu / rho
@@ -622,7 +780,7 @@ MODULE NavierStokes2
 
 !
 !       VNorm = MAX( SQRT( SUM(Velo(1:dim)**2) ), 1.0d-12 )
-!       Re = MIN( 1.0d0, rho * mK * hK * VNorm / (4 * mu) )
+!       Re = MIN( 1.0d0, rho * mK * hK * VNorm / StiffMa(4 * mu) )
 !
 !       Tau = hK * Re / (2 * rho * VNorm)
 !       Delta = rho * Lambda * Re * hK * VNorm
@@ -658,6 +816,9 @@ MODULE NavierStokes2
 !------------------------------------------------------------------------------
 !    Loop over basis functions (of both unknowns and weights)
 !------------------------------------------------------------------------------
+  
+    ! WRITE(*,*) 'N_integ=', N_integ
+    ! WRITE(*,*) 'Zzzzzeroing'
      DO p=1,NBasis
         IF (.NOT.Isotropic) THEN
           G = 0.0d0
@@ -810,7 +971,9 @@ MODULE NavierStokes2
              A(c,i) = A(c,i) + s * dBasisdx(q,i) * BaseP
 
            END IF
-           SELECT CASE(Cmodel)
+
+
+            SELECT CASE(Cmodel)
            CASE(PerfectGas1)
              A(c,i) = A(c,i) + s * ( rho / Pressure ) * &
                  Basis(q) * dPressuredx(i) * BaseP / 2
@@ -825,6 +988,7 @@ MODULE NavierStokes2
              A(c,i) = A(c,i) + s * drhodx(i) * Basis(q) * BaseP
 
            CASE(UserDefined2)
+
              A(c,c) = A(c,c) + s * drhodp*dBasisdx(q,i)*Velo(i)*BaseP/2
              A(c,i) = A(c,i) + s * drhodp*dPressuredx(i)*Basis(q)*BaseP/2
            END SELECT
@@ -855,8 +1019,8 @@ MODULE NavierStokes2
        IF ( Stabilize ) THEN 
 
           DO i=1,dim
-             DO j=1,c
-               M(j,i) = M(j,i) + s * Tau * rho * Basis(q) * SW(p,j,i)
+             DO j=1,c	
+		 M(j,i) = M(j,i) + s * Tau * rho * Basis(q) * SW(p,j,i)
              END DO
 
              DO j=1,dim
@@ -864,9 +1028,22 @@ MODULE NavierStokes2
              END DO
           END DO  
 
-          A = A + s*Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
-      
-        
+	IF (Element % ElementIndex .EQ. hej) THEN 
+	
+
+	Stabilityterm=Stabilityterm + s * Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
+
+        END IF
+
+         IF (AnisotropicStabilize) THEN
+         A = A + s * Tau*MATMUL(SWnew(p,1:c,1:dim),SUnew(q,1:dim,1:c))
+         ELSE
+        	 IF (Element % ElementIndex .EQ. hej) THEN
+        		 Aunstable=A
+		END IF
+         	A = A + s * Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
+         END IF
+
        ELSE IF ( Vms ) THEN
           DO i=1,dim
             ! (rho*u',grad(q))
@@ -925,7 +1102,9 @@ MODULE NavierStokes2
           END DO
        END IF
      END DO
-     END DO
+     END DO 
+
+
 
 !------------------------------------------------------------------------------
 !    The righthand side...
@@ -967,12 +1146,72 @@ MODULE NavierStokes2
           Load(c) = Load(c) + s * Pressure * Basis(p) * Compress
        END IF
 
+	!WRITE(*,*) '7777777777777777777777777777777777777'
+        !WRITE(*,*) Force
+	!WRITE(*,*) '7777777777777777777777777777777777777'
+	IF (AnisotropicStabilize) THEN
+		ForceJac(c)=Force(c) !0
+		ForceJac(1:dim)=MATMUL(JacTrans(1:dim,1:dim),Force(1:dim))
+        END IF
+
+IF (Skrivut) THEN
+
+ WRITE(*,*) '------------------------------'
+WRITE(*,*) 'load before stabilize'
+WRITE(*,*) Load
+ WRITE(*,*) '------------------------------'
+WRITE(*,*) 'Force  '
+WRITE(*,*) Force
+ WRITE(*,*) '------------------------------'
+WRITE(*,*) 'ForceJac  '
+WRITE(*,*) ForceJac
+
+END IF
+
        IF ( Stabilize ) THEN
          DO i=1,DIM
            DO j=1,c
-             Load(j) = Load(j) + s * Tau * rho * Force(i) * SW(p,j,i)
+		IF (AnisotropicStabilize) THEN
+			LoadOld=Load             
+		     LoadOld(j) = LoadOld(j) + s * TauOld * rho * Force(i) * SW(p,j,i)
+		     Load(j) = Load(j) + s * Tau * rho * ForceJac(i) * SWnew(p,j,i)
+		ELSE IF (PoissonPressure) THEN
+		     Load(j) = Load(j) + s * 0.0 * rho * Force(i) * SW(p,j,i)
+		ELSE
+		     Load(j) = Load(j) + s * Tau * rho * Force(i) * SW(p,j,i)
+		END IF
            END DO
          END DO
+
+IF (Skrivut) THEN
+WRITE(*,*) '------------------------------'
+WRITE(*,*) 'load with stabilize'
+WRITE(*,*) Load
+WRITE(*,*) '------------------------------'
+WRITE(*,*) 'load with old stabilize'
+WRITE(*,*) '------------------------------'
+WRITE(*,*) LoadOld
+WRITE(*,*) '------------------------------'
+WRITE(*,*) 'JacTrans:' 
+DO i=1,dim
+WRITE(*,*) JacTrans(dim,:)
+END DO
+WRITE(*,*) '------------------------------'
+	 WRITE(*,*) 'stabilty term='
+Stabilityterm=s*Tau*MATMUL(SWnew(p,1:c,1:dim),SUnew(q,1:dim,1:c))
+Stabilitytermold=s*Tau*MATMUL(SW(p,1:c,1:dim),SU(q,1:dim,1:c))
+DO i=1,dim+1
+	 WRITE(*,*) Stabilityterm(i,:)
+	END DO
+WRITE(*,*) '------------------------------'
+	 WRITE(*,*) 'stabilty term old='
+DO i=1,dim+1
+	 WRITE(*,*) Stabilitytermold(i,:)
+	END DO
+WRITE(*,*) '------------------------------'
+END IF
+
+
        ELSE IF ( Vms ) THEN
          DO i=1,dim
            DO j=1,dim
@@ -1022,6 +1261,15 @@ MODULE NavierStokes2
      END DO
    END IF
 
+!IF (Element % ElementIndex .EQ. hej) THEN
+!WRITE(*,*) 'x',CurrentModel % Solver % Mesh % Nodes % x(Element % NodeIndexes)
+!	WRITE(*,*) 'y',CurrentModel % Solver % Mesh % Nodes % y(Element % NodeIndexes)
+!	WRITE(*,*) 'z',CurrentModel % Solver % Mesh % Nodes % z(Element % NodeIndexes)
+! WRITE(*,*) 'Stabilityterm=', Stabilityterm
+! WRITE(*,*) ' '
+! WRITE(*,*) 'Aunstable=', Aunstable
+! WRITE(*,*) ' '
+!END IF
 !------------------------------------------------------------------------------
  END SUBROUTINE NavierStokesCompose
 !------------------------------------------------------------------------------
