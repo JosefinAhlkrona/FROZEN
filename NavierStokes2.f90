@@ -310,7 +310,7 @@ MODULE NavierStokes2
 !------------------------------------------------------------------------------
     
      hK = element % hK*hscale
-	!WRITE(*,*) 'hK before=', hK
+!	WRITE(*,*) 'hK before=', hK
 
 
 
