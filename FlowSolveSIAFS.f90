@@ -1689,15 +1689,17 @@ SUBROUTINE FlowSolverSIAFS( Model,Solver,dt,TransientSimulation)
         CALL Info( 'FlowSolve',Message, Level=4 )
 
         SIAVelPermuted=0.0
-        k_i=0
-        k_j=0
-        k_jos=1
-        r_jos=1
+!        k_i=0
+!        k_j=0
+!        k_jos=1
+!        r_jos=1
         AFSrow=0
         ASIArow=0
-        AFScol=0
+!        AFScol=0
         FSPerm=0
-fredag=0.0
+!fredag=0.0
+
+	! see equation 13 in Ahlkrona et al., 2015
 
         DO i=1,A % NumberOfRows/NSDOFs !Loop over u,v,p blocks in matrix
 
@@ -1738,10 +1740,10 @@ fredag=0.0
                    
                        CALL SetMatrixElement(A_Coupling,i_jos, &
                             A % Cols(j_jos), A % Values(j_jos))
-                       if (A % Values(j_jos)>fredag) THEN
-                          fredag = A % Values(j_jos)
-                          END IF
-                       fredag=fredag+1
+!                       if (A % Values(j_jos)>fredag) THEN
+!                          fredag = A % Values(j_jos)
+!                          END IF
+!                       fredag=fredag+1
                   
 
                     END IF
@@ -1826,6 +1828,7 @@ fredag=0.0
         !xfs => x_FS
 
         pp => Solver % Variable % Perm
+        Solver % Variable % Perm => FSPerm
         ss => Solver % Matrix
         Solver % Matrix => A_FS 
         A => Solver % Matrix
