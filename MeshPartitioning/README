@@ -1,0 +1,21 @@
+1. Replace meshpart.c in PATHTOELMERCODE/elmerfem/elmergrid/src/metis$ with the meshpart.c that you find in this folder
+
+2. Recompile ElmerGrid as you usually do it or by running ./compilegrid.sh (that you find in this folder) in  PATHTOELMERCODE/elmerfem/
+
+3. Convert the cirkel.msh file to an elmergrid by running: ElmerGrid 14 2 cirkel.msh -autoclean
+
+4. Run the test case (circular ice sheet with an ice stream):  ElmerSolver partitiontest.sif. You need to compile IceStream.f90 and linkFS.f90 with elmerf90 before that
+
+5. Compile WeigthFinder.f90 with elmerf90
+
+6. Run: ElmerSolver findweights.sif     
+This sif-file runs the solver WeigthFinder, which computes weights for each ice column as  the sum of (ApproximationLevel-1.0)*10.0+Phi for that column. Phi is a value that should be above 0. The larger it is the more important the SIA nodes will be, currently it is set to 0.1 but can be changed in the sif-file findweights.sif. The weights are stored in a file called mesh.weights
+
+7. Partitionion the mesh by running ElmerGrid 2 2 cirkel -metis 4 0   The number 4 means that we have 4 partions. This is where the modified meshpart.c comes into action.
+
+8. Check how the partitioned mesh looks in paraview by running
+ echo lookatmesh.sif > ELMERSOLVER_STARTINFO; mpirun -np 4 ElmerSolver_mpi and then opening the vtu-files called "partitionoutput"
+
+9. If you want, compare with the vtu-file called findweights, which shows the value of the weights (the variable you wanna look at in paraview is called "nodalweights")
+ 
+

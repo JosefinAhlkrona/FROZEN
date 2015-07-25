@@ -1,0 +1,154 @@
+$name = "findweights"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! HEADER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "cirkel"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATC stuff
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SIMULATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation 
+  Coordinate System  = "Cartesian 3D"
+ !Coordinate Mapping(3) = Integer 1 2 3
+
+  Simulation Type = Steady 
+  Timestepping Method = "BDF"
+  BDF Order = 1
+  Timestep Intervals = 3!100
+  Timestep Sizes =   0.08   !1 month = 0.0833333333 year
+   
+  Extruded Mesh Levels=5
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  
+  Output File = $name$.result
+  Post File = $name$.ep
+  Output Intervals = 1
+  
+
+  Restart File = partitiontest.result
+  Restart Position = 0
+
+  max output level = 11
+
+  Simulation Timing = Logical True
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SOLVER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Solver 1
+  !Exec Solver = Never
+  Equation = "MapCoordinate"
+  Active Coordinate = Integer 3
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  !Dot Product Tolerance = Real 0.0001
+  !Minimum Mesh Height = Real 100.0
+End 
+
+Solver 2
+  !Exec Solver = Never
+  Equation = "FindWeights"
+  Procedure = File "WeightFinder" "WeightFinder"
+  Variable = -nooutput "vikter"
+  Variable DOFs = 1
+  Exported Variable 1 = NodalWeights
+  Exported Variable 1 DOFs = 1
+  Active Coordinate = 3
+  Phi = Real 0.1
+End
+
+Solver 3
+Exec Solver = after saving
+Equation = "result output"
+Procedure = "ResultOutputSolve" "ResultOutputSolver"
+Output File Name = $name$
+Vtu Format = Logical True
+Binary Output = Logical True ! binary format is the default
+Single Precision = Logical False ! double precision is the default
+! In the Vtu format all fields are saved if the user does not list them explicitely.
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BODIES (i.e., domains to compute on)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Name = "ice"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! EQUATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+ Active Solvers(3) = 1 2 3
+End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATERIAL
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+ Critical Shear Rate = Real 1.0E-10
+ Viscosity Model = String "power law"
+ Viscosity Exponent = $(1.0/3.0)
+ Density = Real MATC "910.0*1.0E-06*(31556926.0)^(-2.0)"
+ Cauchy = Logical True
+  Bottom Surface Elevation = Real 0.0
+
+! non-linear, thermo-mechanical
+  Isothermal = Logical True
+ 
+ Viscosity = Real MATC "(2.0*100.0)^(-1.0/3.0)"
+
+! 0-th step, linear rheology
+! Viscosity = Real MATC "1.0E15*1.0E-06*(31556926.0)^(-1.0)"
+
+! 1st step, non-linear iso-thermal 
+! Viscosity =  Real MATC "glen(-10.0)*(31556926.0)^(-1.0/3.0)*1.0E-06"
+
+ dArrheniusFactordT= Real 0.0
+ Previous ApproximationLevel = Logical False
+ SIA node = Real -1.0 !FS if negative
+End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BOUNDARY CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Boundary Condition 1
+  Target Boundaries = 1 
+  Name = "Outflow"
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Name = "Bottom"
+  Bottom Surface = Real 0.0
+  Body Id = 3
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Name = "Surface"
+  Top Surface = Variable Timestep, H, Coordinate 1, Coordinate 2
+     Real Procedure "./linkFS" "linkFS"
+End

@@ -1,0 +1,212 @@
+$name = "partitionoutput"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! HEADER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "cirkel"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATC stuff
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+$ function surface(xin) {\
+x = xin(0);\
+y = xin(1);\
+eps=100;\
+r=(x^2+y^2)^0.5;\
+L = 750000.0;\
+h_0=3575.1;\
+n=3;\
+if (r < L) {\
+     _surface=h_0*(1-(r/L)^((n+1)/n))^(n/(2*n+2))+eps;\
+   }else {_surface = eps;}\
+}
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! CONSTANTS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  Gas Constant = Real 8.314D00 ! in m-k-s
+  Stefan Boltzmann = Real 6.78E-08
+  Gravity (4) = 0 -1 0  9.81
+  $yearinsec = 365.25*24*60*60
+  $rhoi = 910.0/(1.0e6*yearinsec^2)
+  $gravity = -9.81*yearinsec^2
+  $n = 3.0
+  $eta = (2.0*100.0)^(-1.0/n)
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SIMULATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation 
+  Coordinate System  = "Cartesian 3D"
+ !Coordinate Mapping(3) = Integer 1 2 3
+
+  Simulation Type = Transient 
+  Timestepping Method = "BDF"
+  BDF Order = 1
+  Timestep Intervals = 3!100
+  Timestep Sizes =   0.08   !1 month = 0.0833333333 year
+   
+  Extruded Mesh Levels=5
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  
+  Output File = $name$.result
+  Post File = $name$.ep
+  Output Intervals = 1
+
+  max output level = 11
+
+  Simulation Timing = Logical True
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SOLVER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Solver 1
+  !Exec Solver = Never
+  Equation = "MapCoordinate"
+  Active Coordinate = Integer 3
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  !Dot Product Tolerance = Real 0.0001
+  !Minimum Mesh Height = Real 100.0
+End 
+
+
+Solver 2
+Exec Solver = after saving
+Equation = "result output"
+Procedure = "ResultOutputSolve" "ResultOutputSolver"
+Output File Name = $name$
+Vtu Format = Logical True
+Binary Output = Logical True ! binary format is the default
+Single Precision = Logical False ! double precision is the default
+! In the Vtu format all fields are saved if the user does not list them explicitely.
+End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BODIES (i.e., domains to compute on)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Name = "ice"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name= "free surface"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 3
+  Name= "bedrock"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! EQUATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+ Active Solvers(2) = 1 2
+ Convection = String "computed"
+ Flow Solution Name = String "Flow Solution"
+ NS Convect = False
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! INITIAL CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+ Velocity 1 = Real 0.0
+ Velocity 2 = Real 0.0
+ Velocity 3 = Real 0.0
+ Pressure =   Real 0.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!BODY FORCES
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = 0.0
+  Flow BodyForce 2 = 0.0
+  Flow BodyForce 3 = MATC "-9.81*(31556926.0)^(2.0)"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATERIAL
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+ Critical Shear Rate = Real 1.0E-10
+ Viscosity Model = String "power law"
+ Viscosity Exponent = $(1.0/3.0)
+ Density = Real MATC "910.0*1.0E-06*(31556926.0)^(-2.0)"
+ Cauchy = Logical True
+  Bottom Surface Elevation = Real 0.0
+
+! non-linear, thermo-mechanical
+  Isothermal = Logical True
+ 
+ Viscosity = Real MATC "(2.0*100.0)^(-1.0/3.0)"
+
+! 0-th step, linear rheology
+! Viscosity = Real MATC "1.0E15*1.0E-06*(31556926.0)^(-1.0)"
+
+! 1st step, non-linear iso-thermal 
+! Viscosity =  Real MATC "glen(-10.0)*(31556926.0)^(-1.0/3.0)*1.0E-06"
+
+ dArrheniusFactordT= Real 0.0
+ Previous ApproximationLevel = Logical False
+ SIA node = Real -1.0 !FS if negative
+
+
+ Min H = Real 100.0
+ Max H = Real 4000.0
+End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BOUNDARY CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Boundary Condition 1
+  Target Boundaries = 1 !right??
+  Name = "Outflow"
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Name = "Bottom"
+  Bottom Surface = Real 0.0
+  Body Id = 3
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Name = "Surface"
+  Top Surface = Variable Coordinate 1, Coordinate 2 
+  Real MATC "surface(tx)"
+  Body Id = 2
+End
+
