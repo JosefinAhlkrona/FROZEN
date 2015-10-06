@@ -516,7 +516,7 @@ CONTAINS
        Solver % Matrix => ss
        A => Solver % Matrix
     ELSE ! serial run
-
+!stoppa in ISCAL här
        CALL CRS_MatrixVectorMultiply(Solver % Matrix,SIAVelPermuted,Ax)
     END IF
 
@@ -1044,6 +1044,10 @@ CONTAINS
     !  REAL(KIND=dp) :: dt,
     !     INPUT: Timestep size for time dependent simulations
     !
+    !
+    !  Sorting nodes into FS and SIA nodes according to ErrorInSIA and Bound,
+    !  outputting NumberOfSIAnodes, NumberOfFSNodes, and NodeType2
+    !
     !******************************************************************************
     !------------------------------------------------------------------------------
     USE DefUtils
@@ -1067,7 +1071,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     TYPE(Element_t),POINTER :: Element
     INTEGER :: ACounter, i, j, k, n, NSDOFs, istat 
-    LOGICAL :: OnlyHorizontalError
+    LOGICAL :: OnlyHorizontalError,CantDealWithLoneliness=.FALSE.
     LOGICAL :: AllocationsDone = .FALSE.
     LOGICAL :: gotIt
 
@@ -1089,6 +1093,8 @@ CONTAINS
     logical :: Include_z_velocity
 
     !-----------------------------------------------------------------
+    WRITE( Message, * ) '** Sorting Nodes **'
+       CALL Info( 'FlowSolve', Message, Level=4 )
     FlowSol => Solver % Variable
     NSDOFs         =  FlowSol % DOFs
     FlowPerm       => FlowSol % Perm
@@ -1097,8 +1103,6 @@ CONTAINS
     DivisionMethod  = GetString( Solver % Values, &
          'Approximation Level Determination', gotIt ) 
     IF (.NOT. gotIt) THEN
-       WRITE( Message, * ) 'Dividing approximation levels according to tolerance method'
-       CALL Info( 'FlowSolve', Message, Level=4 )
        DivisionMethod = 'tolerance'
     END IF
 
@@ -1128,7 +1132,8 @@ CONTAINS
       Base_Velocity_Cutoff = 100.
     END IF
 
-
+    CantDealWithLoneliness = GetLogical( Solver % Values, 'Remove Lonely Pillars', gotIt )
+      
   ! see whether or not the z velocity should be included in the error estimation
 
    Include_z_velocity = GetLogical( Solver % Values, 'Z velocity Included ', gotIt )
@@ -1149,6 +1154,8 @@ CONTAINS
     SELECT CASE(DivisionMethod)
 
     CASE('tolerance')
+    WRITE( Message, * ) 'Dividing approximation levels according to tolerance method'
+       CALL Info( 'FlowSolve', Message, Level=4 )
        DO k = 1, Model % Mesh % NumberOfNodes
 
 		if (Include_z_velocity) THEN
@@ -1181,8 +1188,15 @@ CONTAINS
 
        END DO
 
-    CASE('sorting')
+	IF (CantDealWithLoneliness) THEN
+           CALL RemoveLonelyPillars(Model,Solver, NodeType2, NumberOfFSNodes)
+        END IF
 
+       NumberOfSIANodes=Model % Mesh % NumberOfNodes-NumberOfFSNodes
+
+    CASE('sorting')
+      WRITE( Message, * ) 'Dividing approximation levels according to tolerance method'
+       CALL Info( 'FlowSolve', Message, Level=4 )
        FractionFSnodes = GetConstReal(  Solver % Values,  &
             'Number of FS nodes', gotIt )
        IF (.NOT. gotIt) THEN
@@ -1258,6 +1272,10 @@ CONTAINS
           END IF
 
        END DO
+       
+       IF (CantDealWithLoneliness) THEN
+       	   CALL RemoveLonelyPillars(Model,Solver, NodeType2, NumberOfFSNodes)
+       END IF
 
        NumberOfSIANodes=Model % Mesh % NumberOfNodes-NumberOfFSNodes
        DEALLOCATE(FSNodes)
@@ -1265,6 +1283,64 @@ CONTAINS
 
 
   END SUBROUTINE SortNodes
+
+SUBROUTINE RemoveLonelyPillars(Model,Solver, NodeType2, NumberOfFSNodes)
+    !******************************************************************************
+    !
+    !  Estimate Approximation Error
+    !
+    !  ARGUMENTS:
+    !
+    !  TYPE(Model_t) :: Model,  
+    !     INPUT: All model information (mesh,materials,BCs,etc...)
+    !
+    !  TYPE(Solver_t) :: Solver
+    !     INPUT: Linear equation solver options
+    !
+    !  REAL(KIND=dp) :: dt,
+    !     INPUT: Timestep size for time dependent simulations
+    !
+    !
+    !  Removing some lonely SIA or FS nodes to make areas less dotty
+    !  
+    !
+    !******************************************************************************
+    !------------------------------------------------------------------------------
+    USE DefUtils
+
+    IMPLICIT NONE
+
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t), TARGET :: Solver
+
+    REAL(KIND=dp) :: dt
+    LOGICAL :: TransientSimulation
+
+    INTEGER, ALLOCATABLE, intent(inout) :: NodeType2(:)
+    INTEGER, intent(inout) :: NumberOfFSNodes
+    INTEGER :: node, numberofneighbours, neighbours(20),i,maxnofneighbour
+    !-----------------------------------------------------------------
+    !-----------------------------------------------------------------
+
+    !Retrieve information about which nodes are neighbours
+    !if alone, set nodetype to same as others	
+    open (unit=224, file='neighbours.txt')
+    READ(224,*) maxnofneighbour
+    DO i = 1, Model % Mesh % NumberOfNodes !find neighbours for all nodes
+    READ(224,"(I7.2,I7.2)",advance='no')  node,numberofneighbours
+    READ(224,*) neighbours(1:numberofneighbours)
+    WRITE(*,*) i,node,numberofneighbours,neighbours(1:numberofneighbours)
+    WRITE(*,*) NodeType2(neighbours(1:numberofneighbours))
+    IF ( ALL( NodeType2(neighbours(1:numberofneighbours)).NE. NodeType2(i)) ) THEN
+	NodeType2(i)=NodeType2(neighbours(1))
+    END IF
+    END DO
+
+    close(224)
+
+ 
+END SUBROUTINE RemoveLonelyPillars 
+
 
 
 
