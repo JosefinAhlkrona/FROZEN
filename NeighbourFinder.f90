@@ -62,6 +62,7 @@ SUBROUTINE NeighbourFinder( Model,Solver,dt,TransientSimulation )
   !******************************************************************************
   USE DefUtils
   USE ElementUtils
+  USE ParallelUtils
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------
@@ -77,7 +78,7 @@ SUBROUTINE NeighbourFinder( Model,Solver,dt,TransientSimulation )
   
 
   INTEGER :: i, n, m, t, istat, DIM, p, COMP, bc, bottomindex, layercounter,nodeatlayer
-  
+
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
 
@@ -98,11 +99,17 @@ SUBROUTINE NeighbourFinder( Model,Solver,dt,TransientSimulation )
   LOGICAL :: AllocationsDone = .FALSE.
 
   INTEGER :: nofelemsconnected, nofnodesconnected
+
+  INTEGER :: processor_number, file_unit, file_number_length
+  character(len=80) :: file_out, format1
+  character(len=20) :: file_number
   !-----Needed for transient stuff etc.
 
   SolverName = "Neighbour_Finder"
 
 
+  WRITE( Message, * ) 'Looking for neighbours'
+    CALL Info( SolverName, Message, Level=4 )
    IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
 
      N = Solver % Mesh % MaxElementDOFs
@@ -125,7 +132,7 @@ SUBROUTINE NeighbourFinder( Model,Solver,dt,TransientSimulation )
   END IF
   !------------------------------------------------------------------------------
 
-
+  
   NeighbourNodeList=0
   NeighbourElementList=0
 
@@ -206,17 +213,27 @@ SUBROUTINE NeighbourFinder( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   DIM = CoordinateSystemDimension()
  
-  open (unit=412, file="neighbours.txt")
-  WRITE(412,*) MAXVAL(NeighbourNodeList(:,1),1)
+  processor_number = ParEnv % MyPE +1
+
+  file_unit = 1000 + processor_number
+
+  write(file_number,*) processor_number
+  file_number_length = log10(real(processor_number)) + 1
+  write(format1,*)  '(A10,I', file_number_length, ",A4)"
+
+  write(file_out,format1)  "neighbours", processor_number, ".txt"
+
+  open (unit=file_unit, file=file_out, access="sequential", form="formatted", status="replace")
+  WRITE(file_unit,*) MAXVAL(NeighbourNodeList(:,1),1)
   DO i = 1, Model % Mesh % NumberOfNodes 
-     WRITE(412,"(I7.2)",advance='no'), i
+     WRITE(file_unit,"(I7.2)",advance='no'), i
      DO j=1,NeighbourNodeList(i,1)+1
-	WRITE(412,"(I7.2)",advance='no') NeighbourNodeList(i,j)
+	WRITE(file_unit,"(I7.2)",advance='no') NeighbourNodeList(i,j)
      END DO
-     WRITE(412,*) ' '
+     WRITE(file_unit,*) ' '
   END DO
 
-  close(412)
+  close(file_unit)
 
   !------------------------------------------------------------------------------
 END SUBROUTINE NeighbourFinder

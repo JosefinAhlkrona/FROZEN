@@ -1319,24 +1319,43 @@ SUBROUTINE RemoveLonelyPillars(Model,Solver, NodeType2, NumberOfFSNodes)
     INTEGER, ALLOCATABLE, intent(inout) :: NodeType2(:)
     INTEGER, intent(inout) :: NumberOfFSNodes
     INTEGER :: node, numberofneighbours, neighbours(20),i,maxnofneighbour
+
+  INTEGER :: processor_number, file_unit, file_number_length
+  character(len=80) :: file_in, format1
+  character(len=20) :: file_number
     !-----------------------------------------------------------------
     !-----------------------------------------------------------------
 
     !Retrieve information about which nodes are neighbours
     !if alone, set nodetype to same as others	
-    open (unit=224, file='neighbours.txt')
-    READ(224,*) maxnofneighbour
+
+  processor_number = ParEnv % MyPE +1
+
+  file_unit = 1000 + processor_number
+
+  write(file_number,*) processor_number
+  file_number_length = log10(real(processor_number)) + 1
+  write(format1,*)  '(A10,I', file_number_length, ",A4)"
+
+  write(file_in,format1)  "neighbours", processor_number, ".txt"
+
+
+  open (unit=file_unit, file=file_in, access="sequential", form="formatted", status="old")
+    READ(file_unit,*) maxnofneighbour
     DO i = 1, Model % Mesh % NumberOfNodes !find neighbours for all nodes
-    READ(224,"(I7.2,I7.2)",advance='no')  node,numberofneighbours
-    READ(224,*) neighbours(1:numberofneighbours)
-    WRITE(*,*) i,node,numberofneighbours,neighbours(1:numberofneighbours)
-    WRITE(*,*) NodeType2(neighbours(1:numberofneighbours))
-    IF ( ALL( NodeType2(neighbours(1:numberofneighbours)).NE. NodeType2(i)) ) THEN
-	NodeType2(i)=NodeType2(neighbours(1))
-    END IF
+	    READ(file_unit,"(I7.2,I7.2)",advance='no')  node,numberofneighbours
+	    READ(file_unit,*) neighbours(1:numberofneighbours)
+	  !  WRITE(*,*) i,node,numberofneighbours,neighbours(1:numberofneighbours)
+	 !   WRITE(*,*) NodeType2(neighbours(1:numberofneighbours))
+	    IF ( ALL( NodeType2(neighbours(1:numberofneighbours)).NE. NodeType2(i)) ) THEN
+!		write(558,*) i, node, numberofneighbours,neighbours(1:numberofneighbours), "| ", NodeType2(i), "| ",&
+!		 NodeType2(neighbours(1:numberofneighbours))
+
+		NodeType2(i)=NodeType2(neighbours(1))
+	    END IF
     END DO
 
-    close(224)
+    close(file_unit)
 
  
 END SUBROUTINE RemoveLonelyPillars 
