@@ -92,18 +92,20 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
    REAL(KIND=DP), ALLOCATABLE :: xb(:), yb(:), zb(:), xbaux(:), ybaux(:), zbaux(:)
    REAL(KIND=dp) :: noDataVal, noDataTol, posTol
    REAL(KIND=dp), PARAMETER :: noDataValDefault = -9999.0, noDataTolDefault = 0.001, posTolDefault= 1.0D-06
-
+   integer :: spacing_test
+   REAL(KIND=DP), ALLOCATABLE, dimension(:,:) :: z_store
+   REAL(KIND=DP) :: gradient_value, y_derivative, x_derivative
    INTEGER,parameter :: io=20
    INTEGER :: ok, Nx, Ny, Nb, Nbaux, OutNode
    INTEGER :: i, j, k, l, kmin, NoVar
 
-   integer :: interpolation_type
+   integer :: interpolation_type, out_unit
 
    CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, DataF
    CHARACTER(LEN=MAX_NAME_LEN) :: Name, FName, ParaName
    CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='Grid2DInterpolator'
    CHARACTER(LEN=MAX_NAME_LEN) :: interpolation_method
-   LOGICAL :: GotVar, Found, InvertOrder, FillIn
+   LOGICAL :: GotVar, Found, InvertOrder, FillIn, activate_test
 
    NULLIFY(Params,Var,Values,Perm)
 
@@ -369,7 +371,69 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
             IF (Rmin > Rmax) Rmax = Rmin
          END IF
       END DO
-          
+      ! more test code
+
+	activate_test = .false.
+
+	if(activate_test) THEN
+		spacing_test = 20
+		allocate(z_store(Nx * spacing_test,Ny * spacing_test))
+		DO i = 1, Nx * spacing_test
+
+			   x = x0 + dble(i-1) * dx / spacing_test
+
+			DO j = 1, Ny * spacing_test
+		
+
+			   y = y0 + dble(j-1) * dy / spacing_test
+
+
+
+		   Rmin = 0.0
+		   if(interpolation_type == 1) THEN !linear
+		     CALL InterpolateDEM(x,y,xb,yb,zb,Nx,Ny,x0,y0,lx,ly,Rmin,z,noDataVal,noDataTol)
+		   else if (interpolation_type == 2) THEN !cubic
+		     CALL InterpolateDEM_bicubic(x,y,xb,yb,zb,Nx,Ny,x0,y0,lx,ly,Rmin,z,noDataVal,noDataTol)
+		   endif
+			z_store(i, j) = z
+
+		  end do
+
+
+		END DO
+		out_unit = NoVar + 150
+		DO i = 1, Nx * spacing_test
+
+			   x = x0 + dble(i-1) * dx / spacing_test
+			if(x >=-100000 .and. x <=0) THEN
+			DO j = 1, Ny * spacing_test
+		
+
+			   y = y0 + dble(j-1) * dy / spacing_test
+
+			if(y >=-100000 .and. y <=0) THEN
+
+			  x_derivative = ((z_store(i+1,j+1) + 2.d0*z_store(i+1,j) + z_store(i+1,j-1)) - &
+					(z_store(i-1,j+1) + 2.d0*z_store(i-1,j) + z_store(i-1,j-1)))/(8.d0*dx / spacing_test)
+			  y_derivative = ((z_store(i+1,j+1) + 2.*z_store(i,j+1) + z_store(i-1,j+1)) - &
+				(z_store(i+1,j-1) + 2.0*z_store(i,j-1) + z_store(i-1,j-1))) / (8.* dy / spacing_test )
+
+
+			gradient_value = sqrt(x_derivative**2 + y_derivative**2)
+
+
+			write(out_unit,*) x, y, z_store(i, j), gradient_value
+			endif
+		  end do
+
+
+		  end if
+
+		END DO	
+
+	    	  deallocate(z_store)
+	end if
+
       ! Give information on the number of Nodes which are outside of the
       ! DEM domain
       IF (OutNode > 0) THEN
@@ -639,6 +703,42 @@ SUBROUTINE InterpolateDEM_bicubic (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lb
      ! linear interpolation is only carried out if all 4 neighbouring points have data.
 !     zbed = (zi(1,1)*(x2-x)*(y2-y)+zi(2,1)*(x-x1)*(y2-y)+zi(1,2)*(x2-x)*(y-y1)+zi(2,2)*(x-x1)*(y-y1))/(dbx*dby)      
 
+! test code
+ ! write(555,*) "> ", x, y, zbed
+  do x_counter = 1, 6, 1
+
+    x_index = x_start + x_counter - 1
+
+    ! if the point is out of the domain, then you assign the next nearest value
+
+    if(x_index < 1) THEN
+      x_index = 1
+    endif
+
+    if(x_index > Nbx) THEN
+      x_index = Nbx
+    endif
+
+    do y_counter = 1, 6, 1
+
+       y_index = y_start + y_counter - 1
+
+       ! if the point is out of the domain, then you assign the next nearest value
+
+       if(y_index < 1) THEN
+         y_index = 1
+       endif
+
+       if(y_index > Nby) THEN
+         y_index = Nby
+       endif
+
+       z_index = Nbx * (y_index - 1) + x_index
+
+
+!	write(555,*) xb(z_index), yb(z_index), zb(z_index)
+    end do
+  end do
 
 
 CONTAINS
@@ -674,18 +774,35 @@ subroutine bicubic_alpha(in_array, bi_alpha_array, dx, dy)
   REAL(KIND=dp), intent(in) :: dx, dy
   REAL(KIND=dp), dimension(16) :: f_array
   REAL(KIND=dp), dimension(6,6) :: x_der, y_der, xy_der
-  integer :: x_counter, y_counter, counter
-
-
-
+  integer :: x_counter, y_counter,  x_counter2, y_counter2, counter
+  integer, parameter :: number_data = 9
+  REAL(KIND=dp),  dimension(number_data) :: x_array, y_array, z_array
+  REAL(KIND=dp) :: xx_der, x_derivative, y_derivative
 
 	do x_counter = 2, 5
 		do y_counter = 2, 5
 
-			y_der(x_counter, y_counter) = ((in_array(x_counter+1,y_counter+1) + &
-				2.d0*in_array(x_counter,y_counter+1) + in_array(x_counter-1,y_counter+1)) - &
-				(in_array(x_counter+1,y_counter-1) + 2.d0*in_array(x_counter,y_counter-1) + &
-				in_array(x_counter-1,y_counter-1)))/(8.d0*dy) 
+!			y_der(x_counter, y_counter) = ((in_array(x_counter+1,y_counter+1) + &
+!				2.d0*in_array(x_counter,y_counter+1) + in_array(x_counter-1,y_counter+1)) - &
+!				(in_array(x_counter+1,y_counter-1) + 2.d0*in_array(x_counter,y_counter-1) + &
+!				in_array(x_counter-1,y_counter-1)))/(8.d0*dy) 
+
+			! using least squares to find the equation of the plane should give good results for the gradient values
+			! see Skidmore, 1989 "A comparison of techniques for calculating gradient and aspect from a gridded digital elevation model"
+
+			counter = 0
+			do x_counter2 = x_counter-1, x_counter+1
+				do y_counter2 = y_counter-1, x_counter+1
+					counter = counter + 1
+					x_array(counter) = x_counter2 * dx
+					y_array(counter) = y_counter2 * dy
+					z_array(counter) = in_array(x_counter2, y_counter2)
+				end do
+			end do
+
+			call least_squares(x_array, y_array, z_array, number_data, x_derivative, y_derivative)
+			x_der(x_counter,y_counter) = x_derivative
+			y_der(x_counter,y_counter) = y_derivative
 
 		end do
 	end do
@@ -695,15 +812,31 @@ subroutine bicubic_alpha(in_array, bi_alpha_array, dx, dy)
 	do x_counter = 3, 4
 		do y_counter = 3, 4
 
-			x_der(x_counter, y_counter) = ((in_array(x_counter+1,y_counter+1) + &
-				2.d0*in_array(x_counter+1,y_counter) + in_array(x_counter+1,y_counter-1)) - &
-				(in_array(x_counter-1,y_counter+1) + 2.d0*in_array(x_counter-1,y_counter) + &
-				in_array(x_counter-1,y_counter-1)))/(8.d0*dx)
+!			x_der(x_counter, y_counter) = ((in_array(x_counter+1,y_counter+1) + &
+!				2.d0*in_array(x_counter+1,y_counter) + in_array(x_counter+1,y_counter-1)) - &
+!				(in_array(x_counter-1,y_counter+1) + 2.d0*in_array(x_counter-1,y_counter) + &
+!				in_array(x_counter-1,y_counter-1)))/(8.d0*dx)
 
-			xy_der(x_counter, y_counter) = ((y_der(x_counter+1,y_counter+1) + &
-				2.d0*y_der(x_counter+1,y_counter) + y_der(x_counter+1,y_counter-1)) - &
-				(y_der(x_counter-1,y_counter+1) + 2.d0*y_der(x_counter-1,y_counter) + &
-				y_der(x_counter-1,y_counter-1)))/(8.d0*dx) ! pretty sure this has to be dx
+!			xy_der(x_counter, y_counter) = ((y_der(x_counter+1,y_counter+1) + &
+!				2.d0*y_der(x_counter+1,y_counter) + y_der(x_counter+1,y_counter-1)) - &
+!				(y_der(x_counter-1,y_counter+1) + 2.d0*y_der(x_counter-1,y_counter) + &
+!				y_der(x_counter-1,y_counter-1)))/(8.d0*dx) ! pretty sure this has to be dx
+
+			
+			counter = 0
+			do x_counter2 = x_counter-1, x_counter+1
+				do y_counter2 = y_counter-1, x_counter+1
+					counter = counter + 1
+					x_array(counter) = x_counter2 * dx
+					y_array(counter) = y_counter2 * dy
+					z_array(counter) = x_der(x_counter2, y_counter2)
+				end do
+			end do
+
+			call least_squares(x_array, y_array, z_array, number_data, x_derivative, y_derivative) 
+				xy_der(x_counter,y_counter) = y_derivative
+
+
 
 		end do
 	end do
@@ -737,6 +870,200 @@ subroutine bicubic_alpha(in_array, bi_alpha_array, dx, dy)
 
 	end do
 end subroutine bicubic_alpha
+
+
+subroutine least_squares(x_array, y_array, z_array, number_data, x_derivative, y_derivative)
+
+	
+	integer, intent(in) :: number_data
+
+	double precision, dimension(number_data), intent(in) :: x_array, y_array, z_array
+
+	double precision, intent(out) :: x_derivative, y_derivative
+
+	double precision, dimension (number_data,3) :: B
+	double precision, dimension (3,number_data) :: B_transpose, B_total, B_transpose_weighted, B_total_weighted
+	double precision, dimension (3,3) :: B_transpose_B, B_transpose_B_inverse
+	double precision, dimension (number_data) :: d
+	integer :: m, n
+
+
+	! solve least squares problem 
+	! a = [ B^T * B ]^-1 * B^T * d
+
+	! in this case, we are solving the following equation:
+	! z = dz/dx * x + dz/dy * y  + b
+
+	!set up B matrix
+	B(:,1) = x_array 
+	B(:,2) = y_array
+	B(:,3) = 1.
+	B_transpose = transpose(B)
+
+ 	! [ B^T * B ]
+	do m = 1, 2, 1
+
+		do n = 1, 2, 1
+
+			B_transpose_B(m,n) = dot_product(B_transpose(m,1:number_data) , B(1:number_data,n))
+
+		end do
+
+	end do
+
+	! [ B^T * B ]^-1
+	B_transpose_B_inverse = B_transpose_B
+	call gauss_jordan(B_transpose_B_inverse,  3) 
+
+
+	! if the result is a zero matrix, then exit the subroutine and return a gradient of zero
+
+	if (sum(B_transpose_B_inverse) == 0) THEN
+
+		x_derivative = 0
+		y_derivative = 0
+
+		return
+
+	endif
+
+	! [ B^T * B ]^-1 * B^T
+	do m = 1, number_data, 1
+		do n = 1, 2, 1
+
+			B_total(n,m) = dot_product(B_transpose_B_inverse(n,:),B_transpose(:,m))
+
+		END DO
+	END DO
+
+	d = z_array
+
+	! a = [ B^T * B ]^-1 * B^T * d
+
+	! in this case, we are only interested in dz/dx and dz/dy
+
+	x_derivative = dot_product(B_total(1,1:number_data),d)
+
+	y_derivative = dot_product(B_total(2,1:number_data),d)
+
+
+	
+
+end subroutine least_squares
+
+
+subroutine gauss_jordan(a, n) 
+! a is a square matrix of dimensions n that the matrix inverse is taken to be
+
+! if the inverse is singular (i.e. the result has a row of zeros), it will return a matrix containing zeros
+	implicit none
+	integer, intent(in) :: n
+	double precision, intent(inout), dimension(n,n) :: a
+	double precision, dimension(n,n) :: a_temp, a_original, a_solution
+	integer, dimension(n) :: pivot, index_column, index_row
+
+	integer :: i, j, k, row, column, l, ll
+	double precision :: big, temp_var, pivot_inverse
+
+	! the pivot matrix allows the sorting of rows and columns
+	!write(6,*) "n: ", n
+	a_original = a
+
+ 	pivot = 0
+	do i = 1, n
+
+		big = 0.
+
+		do j = 1, n
+
+			if(pivot(j) /= 1) THEN
+				do k = 1, n
+
+
+					if(pivot(k) == 0) THEN
+
+						if(abs(a(j,k)) > big) THEN
+							big = abs(a(j,k))
+							row = j
+							column = k
+						endif
+					elseif(pivot(k) > 1) THEN
+					!	write(6,*) "singular matrix in subroutine gauss_jordan 1"
+						!stop
+						a = 0
+						return
+					endif
+				end do
+
+			endif
+
+		end do
+
+		pivot(column) = pivot(column) + 1
+
+		if (row /= column) THEN
+
+			do l = 1, n
+				temp_var = a(row,l)
+				a(row,l) = a(column,l)
+				a(column,l) = temp_var
+			end do
+
+		endif
+
+		index_row(i) = row
+		index_column(i) = column
+
+
+		
+		pivot_inverse = 1./ a(column,column)
+
+
+
+		if(abs(a(column,column)) < 1.d-14) THEN
+		!	write(6,*) "singular matrix in subroutine gauss_jordan 2"
+			!stop
+			a = 0
+			return
+		endif
+
+		a(column,column) = 1.
+
+		do l = 1, n
+			a(column,l) = a(column,l) * pivot_inverse
+		end do
+
+		do ll = 1, n
+
+			if(ll /= column) THEN
+				temp_var = a(ll, column)
+				a(ll,column) = 0.
+				do l = 1, n
+					a(ll,l) = a(ll,l) - a(column,l) * temp_var
+				end do
+			endif
+		end do
+
+
+
+	end do
+
+
+
+
+	do l = n, 1, -1
+
+		if(index_row(l) /= index_column(l)) THEN
+			do k = 1, n
+				temp_var = a(k,index_row(l))
+				a(k,index_row(l)) = a(k,index_column(l))
+				a(k,index_column(l)) = temp_var
+			end do
+		end if
+
+
+	end do
+end subroutine gauss_jordan
 
 END SUBROUTINE InterpolateDEM_bicubic
 
