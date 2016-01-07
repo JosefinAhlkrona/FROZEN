@@ -49,12 +49,12 @@ export CRAYPE_LINK_TYPE=dynamic
 export CRAYPE_LINK_TYPE=dynamic
 
 
-export ELMER_HOME="/cfs/nobackup/s/saefa/FROZEN/elmer"
+export ELMER_HOME="/cfs/nobackup/n/ninakir/elmer"
 export PATH=$ELMER_HOME/bin:$ELMER_HOME/lib:$ELMER_HOME/include:$PATH
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ELMER_HOME/lib:$ELMER_HOME/include:"/cfs/nobackup/s/saefa/FROZEN/elmerfem/fem/src":"/opt/cray/tpsl/1\
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ELMER_HOME/lib:$ELMER_HOME/include:"/cfs/nobackup/n/ninakir/elmerfem/fem/src":"/opt/cray/tpsl/1\
 .5.0/GNU/49/x86_64/lib":"/opt/intel/composer_xe_2013_sp1.4.211/compiler/lib/intel64"
 export LIBS="-L$ELMER_HOME/lib"
-export LDFLAGS="-L$ELMER_HOME/lib -L/cfs/nobackup/s/saefa/FROZEN/elmerfem/fem/src -L/usr/lib64 -L/opt/intel/composer_xe_2013_sp1.4.211/compiler/lib/intel64"
+export LDFLAGS="-L$ELMER_HOME/lib -L/cfs/nobackup/n/ninakir/elmerfem/fem/src -L/usr/lib64 -L/opt/intel/composer_xe_2013_sp1.4.211/compiler/lib/intel64"
 #export LDFLAGS="-R /cfs/nobackup/s/saefa/FROZEN/elmerfem/fem/src/"                                                                           
 
 
@@ -78,8 +78,8 @@ elmerf90 -o ComputeNormal ComputeNormal.f90
 elmerf90 -o linkZsGreen_newData linkZsGreen_newData.f90
 elmerf90 -o Grid2DInterpolator2   Grid2DInterpolator.f90
 
-firstletter="g"
-username="gowan"
+firstletter="n"
+username="ninakir"
 
 mv  SIASolverJosefin2 /cfs/nobackup/${firstletter}/${username}/elmer/lib
 mv  FlowSolveSIAFS /cfs/nobackup/${firstletter}/${username}/elmer/lib
