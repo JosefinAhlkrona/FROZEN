@@ -1092,6 +1092,10 @@ CONTAINS
     real(KIND=dp) :: FlowSolution_velocity, Base_Velocity_Cutoff
     logical :: Include_z_velocity
 
+    integer :: minimum_FS_nodes, max_velocity_index
+    logical, dimension(:), allocatable :: velocity_mask
+    REAL(KIND=dp), dimension(:), allocatable :: velocity_array
+
     !-----------------------------------------------------------------
     WRITE( Message, * ) '** Sorting Nodes **'
        CALL Info( 'FlowSolve', Message, Level=4 )
@@ -1151,11 +1155,25 @@ CONTAINS
       Include_z_velocity = .false.
    endif
 
+! Read in the minimum amount of Full Stokes nodes included in Approximation Levels
+   minimum_FS_nodes = GetInteger( Solver % Values, 'Minimum FS Nodes ', gotIt )
+   IF (.NOT. gotIt) THEN
+     WRITE( Message, * ) 'Minimum FS Nodes  not found, setting to 0 by default'
+     CALL Info( 'FlowSolve', Message, Level=4 )
+     minimum_FS_nodes = 0
+   END IF
+
+
     SELECT CASE(DivisionMethod)
 
     CASE('tolerance')
     WRITE( Message, * ) 'Dividing approximation levels according to tolerance method'
        CALL Info( 'FlowSolve', Message, Level=4 )
+
+       allocate(velocity_array(Model % Mesh % NumberOfNodes), velocity_mask(Model % Mesh % NumberOfNodes))
+
+       velocity_mask = .true.
+
        DO k = 1, Model % Mesh % NumberOfNodes
 
 		if (Include_z_velocity) THEN
@@ -1170,6 +1188,7 @@ CONTAINS
 
 		endif
 
+	    velocity_array(k) = FlowSolution_velocity
 
            node_layer = (k-1) / nodes_per_layer + 1
 
@@ -1180,7 +1199,7 @@ CONTAINS
 	      (FlowSolution_velocity > Base_Velocity_Cutoff .and. node_layer == 1)) THEN !FS-Node 
              NumberOfFSNodes=NumberOfFSNodes+1
              NodeType2(k) = 2
-
+		 velocity_mask(k) = .false.
           ELSE    !SIA-Node
              NumberOfSIANodes=NumberOfSIANodes+1
              NodeType2(k) = 1
@@ -1191,6 +1210,27 @@ CONTAINS
 	IF (CantDealWithLoneliness) THEN
            CALL RemoveLonelyPillars(Model,Solver, NodeType2, NumberOfFSNodes)
         END IF
+
+	 if(Model % Mesh % NumberOfNodes < minimum_FS_nodes) THEN ! all nodes should be Full Stokes
+
+	   NodeType2 = 2
+	   NumberOfFSNodes = Model % Mesh % NumberOfNodes
+
+       else
+
+	   do while (NumberOfFSNodes < minimum_FS_nodes)  ! must include more nodes as full stokes nodes
+
+		max_velocity_index = maxloc(velocity_array,1,velocity_mask)
+
+		NodeType2(max_velocity_index) = 2
+		velocity_mask(max_velocity_index) = .false.
+            NumberOfFSNodes = NumberOfFSNodes+1
+
+    	   end do
+
+	 endif
+
+       deallocate(velocity_array, velocity_mask)
 
        NumberOfSIANodes=Model % Mesh % NumberOfNodes-NumberOfFSNodes
 
